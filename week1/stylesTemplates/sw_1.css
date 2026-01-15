@@ -1,0 +1,175 @@
+/* Whole document: */
+body{
+  font-family: "Helvetica";
+  font-size: 13pt;
+  background-color: #f9f9f9;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+
+/* Content of the markdown is not main-container but is toc-content */
+.toc-content {
+  margin-left: -15px;
+  padding-left: 0px;
+}
+
+
+
+/* Headers */
+
+h1.title {color: black;
+  font-size: 16pt;
+  padding-top: 1em;
+  padding-bottom: .2em;
+  padding-right: .2em;
+  text-align: left;
+  font-weight: bold;
+  font-family: helvetica;
+  /* max-width: 750px; */
+  /* border-left: 15px solid #6e1717; */
+}
+
+h1, .h1, h2, .h2, h3, .h3 {
+  margin-top: 15px;
+  padding-bottom: .25em;
+  padding-left: .5em;
+  padding-top: .25em;
+  font-family: helvetica;
+  font-weight: bold;
+}
+
+
+h1 {
+  font-size: 15pt;
+  padding-top:.5em;
+  color: 	 black;
+  background-color: #f9f1f1;
+}
+
+
+
+h2 { 
+  font-size: 15pt;
+  padding-top:.5em;
+  color: black;  
+  background-color: #e6e2d8;
+}
+
+
+h3 { 
+  font-size: 15pt;
+   color: white;
+   background-color:  #81A88D70;
+}
+
+
+/* Code Chunks */
+pre {
+  max-height: 350px;
+  background-color: #81A88D20;
+  overflow-y: auto;
+}
+
+pre[class] {
+  max-height: 350px;
+}
+
+.r code {
+    white-space: pre;
+}
+
+pre code {
+  white-space: pre-wrap;
+}
+
+
+/* LINKS */
+
+/* unvisited link */
+a:link {
+  color: #374AD5;
+  text-decoration: none;
+}
+
+
+/* visited link */
+a:visited {
+  color: #4B0082;
+  text-decoration: none;
+}
+
+/* mouse over link */
+a:hover { 
+  color: #4B0082;
+  background-color: #E4ECE7;
+  text-decoration: none;
+}
+
+/* TOC */
+
+/*----------LOGO above TOC in empty box---------*/
+#TOC::before {
+  content: "";
+  display: block;
+  top: 0px;
+  height: 175px;
+  width: 150px;
+  margin-top: 20px; /* Adds space below the logo */
+  margin-bottom: 20px; /* Adds space below the logo */
+  background-image: url("coglab_logo20.png");
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+
+/*----------Actual TOC Container---------*/
+div#TOC {
+  font-size: 10pt;
+  border: white;
+  background: white;
+  padding-right: 2px;  /* Fixed typo (was missing 'px') */
+  padding-left: 2px;
+  width: 15%;  /* Reduces width by 10% (from original 100%) */
+  max-width: 15%; /* Ensures it doesn't exceed 90% of parent */
+}
+
+
+ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list-group-item.active:hover {
+    z-index: 1;
+    color: #6e1717;
+    background-color: #CFCFCF;
+    border-color: #CFCFCF;
+}
+
+.list-group-item.active:hover {
+    z-index: 2;
+    color: #6e1717;
+    background-color: #CFCFCF;
+    border-color: #CFCFCF;
+}
+
+
+.list-group-item.active {
+    z-index: 1;
+    color: #6e1717;
+    text-decoration: none;
+    background-color: #CFCFCF;
+    border-color: #CFCFCF;
+}
+
+.list-group-item.active {
+    z-index: 2;
+    color: #6e1717;
+    text-decoration: none;
+    background-color: #E4ECE7;
+    border-color: #E4ECE7;
+    }
+
