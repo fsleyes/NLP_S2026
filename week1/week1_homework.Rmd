@@ -7,7 +7,7 @@ output:
     toc: true
     toc_float: true
     toc_depth: 1
-    css: !expr here::here("./stylesTemplates/sw_1.css")
+    css: !expr here::here("week1/stylesTemplates/sw_1.css")
 ---
 
 ```{r setup, include=F}
@@ -49,13 +49,6 @@ I am going to create a data frame with string "mary had a little lamb".
 #create a data frame with one column named string and value for first row "mary had a little lamb"
 df <- data.frame(string = "mary had a little lamb")
 
-
-
-
-
-
-
-
 kable(df)
 ```
 
@@ -69,7 +62,7 @@ Then I'm going to split the string into one row per word.
 ```{r}
 
 #split the string by giving function name the column "string" and indicating delimited by spaces
-df_split <- string %>%
+df_split <- df %>%
   separate_longer_delim(string, delim = " ")
 kable(df_split)
 ```
@@ -98,10 +91,16 @@ kable(df_split)
 
 Same thing but for the 10,000 repeats
 ```{r}
+
+#create the string repeat
 string_repeat <- data.frame(repeat_str = paste(rep("mary had a little lamb", 10000), collapse = " "))
+
+#separate using space as delimiter and create the letter count column same as before
 string_repeat_split <- string_repeat %>%
   separate_longer_delim(repeat_str, delim = " ") %>%
   mutate(n_letter = nchar(repeat_str))
+
+string_repeat_split
 ```
 
 
