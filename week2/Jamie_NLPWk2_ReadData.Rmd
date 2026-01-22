@@ -1,0 +1,193 @@
+---
+title: "Importing and Exporting Text Data To and From R"
+author: "Jamie Reilly, Ph.D."
+date: "`r format(Sys.Date(), '%B %Y')`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    css: !expr here::here("../StylesTemplates/jr_19.css")
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+#to_R <- read.csv(here("data", "MyRaw.txt")) ---- using 'here' to read in data
+```
+
+# Importing Text into R
+Plain text (txt) and csv files are your go-to formats. There are times when you will want to retain metadata (document titles, dates, etc.) for multidocument corpora.
+
+## Local Txt File
+From your machine's 'data' folder inside of this project folder. The problem with this is of course that another user can't knit your markdown unless they install
+```{r}
+mytext1 <- readLines('data/pangram.txt')
+print(mytext1)
+```
+
+## Local CSV File
+CSV file with some meta-data appended
+```{r}
+mytext2 <- read.csv('data/pantext.csv')
+print(mytext2)
+```
+
+## URL Public File How To
+Store your text file in a public repository (e.g., your github repo). Make sure that you have the rights to share the text. Copy the URL for the raw file.
+<br>
+
+![Screenshot of Github Repository](figures/mygithub.png){ height=150px }
+<br>
+```{r}
+#read txt file from github, paste all lines from text into one continuous file using " " as separator
+sherlock <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/SherlockHolmes.txt'))
+
+# Print the first few lines to check content
+cat(sherlock[1:5], sep = "\n")
+```
+## Import Unabomber
+Import and inspect the raw unabomber manifesto, inspect
+```{r}
+unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+
+#Print first few lines of unabomber manifesto
+cat(unabomb[1:10], sep = "\n")
+```
+<br>
+<br>
+
+# Exporting from R
+Sometimes you want to save a text sample to your own machine. You can save it in raw plain text format or RDA format (a compressed format that R likes and will keep you under file size limits)
+```{r}
+#create a new dataframe
+mysample <- c("Mary had a little lamb")
+print(mysample)
+
+#write that new dataframe to your hard drive as a CSV file
+write.csv(mysample, 'scratch/mysample.csv', row.names = F)
+
+#Saving text in a compressed format R likes
+save(mysample, file='scratch/mysample.rda')
+```
+<br>
+<br>
+
+# Importing BIG data 
+We'll look at the Jane Austen package and then mess with Project Gutenberg
+```{r}
+#if regular installation doesn't work try this:
+#install.packages("gutenbergr", type = "source")
+
+#Load libraries
+library(gutenbergr)
+library(janeaustenr)
+```
+<br>
+<br>
+
+## gutenbergr
+[visit project gutenberg](https://www.gutenberg.org/about) <br />
+Project Gutenberg contains >60,000 free works in many different formats, languages, and file types. What we want for text mining is plain text. More specifically, we want structured text files. Files don't come automatically prepped that way from Project Gutenberg, but we can structure them ourselves. Per the Gutenberg website: <br />
+
+"Project Gutenberg was the first provider of free electronic books, or eBooks. Michael Hart, founder of Project Gutenberg, invented eBooks in 1971 and his memory continues to inspire the creation of eBooks and related content today."-- Return specific criteria: <br /> 
+
+`gutenberg_works(..., languages = "en", only_text = TRUE, rights = c("Public domain in the USA.", "None"),  distinct = TRUE, all_languages = FALSE, only_languages = TRUE)`
+<br>
+
+## Filter 
+`glimpse(gutenberg_works())` lists all English language texts in project Gutenberg by whatever metafield you would like to filter on
+```{r}
+gutenberg_works(author=="Dickens, Charles", languages = "en", only_text = TRUE, rights = NULL, distinct = TRUE, all_languages = FALSE, only_languages = TRUE)  #all english works regardless of copyright
+```
+<br>
+
+## Search Titles 
+[library of congress subject headings (lcsh)](https://id.loc.gov/authorities/subjects.html)
+"Library of Congress Subject Headings (LCSH) is perhaps the most widely adopted subject indexing language in the world, has been translated into many languages, and is used around the world by libraries large and small" 
+[library of congress classification (lcc)](https://www.loc.gov/catdir/cpso/lcco)<
+Link and find codes by subject.
+
+```{r, eval=F}
+gutenberg_subjects %>% filter(subject_type == "lcsh") %>% count(subject, sort = TRUE)
+sci <- gutenberg_subjects %>% filter(subject_type == "lcc", subject == "Q")  #return a vectorized list of all texts about 'science' just outputting their ID
+extract <- as.vector(sci$gutenberg_id) #writes gutenberg ids to a numeric vector
+print(extract)
+gutenberg_works(gutenberg_id==extract) #return in index of all english works regardless of copyright about the subject type Q (which is the code for science)
+```
+<br>
+
+## Download 1 Doc
+Download by gutenberg_id -- here are some other fields: <br>
+`gutenberg_download(gutenberg_id, mirror = NULL, strip = TRUE, meta_fields = TRUE, verbose = TRUE, files = NULL)`
+```{r, eval=F}
+great <- gutenberg_download(1400, meta_fields=c("title", "author"))  #strip dumps stuff from the header, includes author, title, text in the dataframe
+head(great)
+```
+
+### Download multiple documents
+add meta fields
+```{r}
+#more.dickens <- gutenberg_download(c(588,644,1400), meta_fields = c("title", "author"))
+#head(more.dickens)
+```
+
+### Download all works by one author
+That are in English and have full text. Write the downloaded files to a folder then comment out so it doesn't download them anew every time you knit.
+```{r}
+#alldickens <- gutenberg_works(author == "Dickens, Charles")) #isolate dickens works
+#dickids <- alldickens$gutenberg_id #extract vector of document ids
+#alldickens <- gutenberg_download(dickids, meta_fields = c("title", "author"))
+#str(alldickens)
+```
+
+## janeaustenr
+[read about the jane austen package here](https://cran.r-project.org/web/packages/janeaustenr/index.html)  <br />
+Fulltexts for Jane Austen's 6 completed novels: <br />
+Sense & Sensibility <br />
+Pride & Prejudice <br />
+Mansfield Park <br />
+Emma <br />
+Northanger Abbey <br />
+Persuasion
+
+## Take a peek
+```{r}
+austen_books()  #all six texts in tidy format
+```
+
+## Emma
+```{r}
+cat(emma[1:50], sep = "\n")
+```
+<br>
+<br>
+
+
+# Now for your challenge!
+Import 'sticks_messy.txt' from your data folder. Write simple cleaning function. Tell me how many tokens are in the file before and after cleaning (use " " as a separator).
+
+

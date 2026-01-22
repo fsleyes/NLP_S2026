@@ -1,0 +1,300 @@
+---
+title: "NLP WEEK 2"
+author: "Shawn Wang"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 1
+    css: !expr here::here("../stylesTemplates/sw_1.css")
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+
+library(tidytext)
+
+```
+
+
+# Functions
+
+
+## Functions to add numbers
+```{r}
+#function to add numbers
+
+add_func <- function(x, y) {
+  
+  sum <- x + y
+  return(sum)
+}
+
+
+
+```
+
+
+
+## Function to mean 2 numbers
+```{r}
+mean_func <- function(x, y) {
+  
+  sum <- x + y
+  mean <- sum / 2
+  return(mean)
+}
+
+
+```
+
+
+
+## Function to remove any word from a string
+```{r}
+
+
+replace_func <- function(string, old_Word, replacement_Word) {
+  
+  x <- string
+  x_clean <- x %>%
+    gsub(pattern = old_Word, replacement = replacement_Word) 
+  
+  return(x_clean)
+  
+  
+}
+
+
+```
+## Function to remove special characters
+```{r}
+
+
+remove_special_func <- function(myString) {
+  
+
+  
+  x_clean <- gsub("[[:punct:]]", "", myString)
+
+  
+  return(x_clean)
+  
+  
+}
+
+
+```
+
+
+## Function to split string into data frame, one word per row
+```{r}
+
+
+split_string <- function(x) {
+  
+  cleaned_x <- data.frame(string = x) %>%
+    separate_longer_delim(string, delim = " ") %>%
+    filter(string != "")
+  return(cleaned_x)
+  
+}
+
+
+
+```
+## Function to remove "the"
+```{r}
+
+
+remove_the <- function(x) {
+  
+  x_clean <- x %>%
+    gsub(pattern = "the", replacement = "", ignore.case = TRUE)
+  return(x_clean)
+}
+
+```
+
+
+
+## Remove numbers
+```{r}
+
+
+
+remove_numbers <- function(x) {
+  
+  
+  x_clean <- x %>%
+    gsub(pattern = "\\d+", replacement = "")
+  return(x_clean)
+  
+}
+
+```
+
+
+
+## Function to clean built from other functions
+
+```{r}
+
+
+clean_string <- function(x, words) {
+  
+  #remove special characters
+  x <- remove_special_func(x)
+  
+  
+  #remove numbers 
+  x <- remove_numbers(x)
+  
+  #remove words that we don't want
+  for (i in seq_along(words)) {
+    
+    x <- replace_func(string = x, old_Word = words[i], replacement_Word = "")
+    x <- tolower(x)
+  }
+  
+  return(x)
+  
+}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+# Tasks
+
+
+## Remove special characters and split into rows "mary had a little lamb"
+```{r}
+
+
+test_string <- "ma%ry h*ad a l$itt@le la***)mb and the far*m #"
+
+#use split_string function to remove special characters
+result_string <- split_string(remove_special_func(test_string))
+result_string
+
+
+
+
+```
+
+
+
+
+## Remove all "the"s from Pride and Prejudice
+```{r}
+
+#read in data
+data <- readLines(here::here("./data/PridePrejudice.txt"))
+
+
+#replace the with blanks
+PnP_noThes <- replace_func(string = data, old_Word = "the", replacement_Word = "")
+
+
+#split into data frame
+PnP_noThes_split <- split_string(PnP_noThes) %>%
+  filter(string != "")
+
+
+
+```
+
+
+
+## Clean the "sticks_messy.txt" file
+
+1. Clean punctuation
+2. Get rid of "and", "the", and "for
+3. Split into tidy format
+4. Count how many words
+5. Find type token ratio
+
+
+### Clean the text
+```{r}
+sticks_messy <- readLines(here::here("./data/sticks_messy.txt"))
+
+
+#these are specific words we want to remove
+removed_words <- c("and", "the", "for")
+
+
+#run the integrated string cleaning function
+sticks_messy_clean <- clean_string(sticks_messy, removed_words)
+
+#split into data frame with one word per row
+sticks_messy_clean_split <- split_string(sticks_messy_clean)
+# test <- data.frame(string = sticks_messy_clean) %>%
+#   unnest_tokens(word, string)
+
+
+
+```
+
+
+### Count number of words
+
+```{r}
+#count number of words
+num_words <- nrow(sticks_messy_clean_split)
+sticks_messy_clean_split
+```
+
+
+After cleaning, there are `r num_words` words in the corpus. 
+
+
+
+### Calculate TTR
+```{r}
+
+#group by unique words using group_by and summarizing how many of each unique word there are
+sticks_Unique_Words <- sticks_messy_clean_split %>% group_by(string) %>%
+  summarize(n = n())
+#this resulting data frame has only unique words
+
+#divide unique words by total words to obtain TTR
+sticks_TTR <- nrow(sticks_Unique_Words) / nrow(sticks_messy_clean_split)
+
+```
+
+There are `r nrow(sticks_Unique_Words)` unique words in the sticks dataset after cleaning and removing select stop words. Computing the TTR by dividing the number of unique words by the number of total words: $`r nrow(sticks_Unique_Words)` / `r nrow(sticks_messy_clean_split)` = `r round(sticks_TTR, 2)`$.

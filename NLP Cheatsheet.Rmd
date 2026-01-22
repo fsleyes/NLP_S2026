@@ -1,0 +1,205 @@
+---
+title: "NLP CHEATSHEET"
+author: "Shawn Wang"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 1
+    css: !expr here::here("./stylesTemplates/sw_1.css")
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+
+library(tidytext)
+
+```
+
+
+# FUNCTIONS
+
+
+
+## Functions to add numbers
+```{r}
+#function to add 2 numbers
+
+add_func <- function(x, y) {
+  
+  #add them together
+  sum <- x + y
+  return(sum)
+}
+
+
+
+```
+
+
+
+## Function to mean 2 numbers
+```{r}
+
+
+mean_func <- function(x, y) {
+  
+  #take the sum
+  sum <- x + y
+  
+  #divide by 2
+  mean <- sum / 2
+  return(mean)
+}
+
+
+```
+
+
+
+## Function to remove any word from a string
+```{r}
+
+#old_Word is the word you want to replace
+#replacement_Word is the word you want to replace it with
+#takes a string returns a string
+replace_func <- function(string, old_Word, replacement_Word) {
+  
+  x <- string
+  x_clean <- x %>%
+    gsub(pattern = old_Word, replacement = replacement_Word) 
+  
+  return(x_clean)
+  
+  
+}
+
+
+```
+
+
+## Function to remove special characters
+```{r}
+
+#takes a string returns a string
+remove_special_func <- function(myString) {
+  
+
+  #replaces punctuation and special characters with blanks
+  x_clean <- gsub("[[:punct:]]", "", myString)
+
+  
+  return(x_clean)
+  
+  
+}
+
+
+```
+
+
+## Function to split string into data frame, one word per row
+```{r}
+
+#takes a string returns a data frame
+split_string <- function(x) {
+  
+  #convert to a data frame first
+  cleaned_x <- data.frame(string = x) %>%
+    separate_longer_delim(string, delim = " ") %>% #pivots to long format based on delimeter of space
+    filter(string != "") #filters so that empty rows are deleted
+  return(cleaned_x)
+  
+}
+
+
+
+```
+## Function to remove "the"
+```{r}
+
+
+remove_the <- function(x) {
+  
+  #replaces "the" with blank
+  x_clean <- x %>%
+    gsub(pattern = "the", replacement = "", ignore.case = TRUE)
+  return(x_clean)
+}
+
+```
+
+
+
+## Remove numbers
+```{r}
+
+
+#takes a string returns a string
+remove_numbers <- function(x) {
+  
+  #uses regex to remove any numbers from a string
+  x_clean <- x %>%
+    gsub(pattern = "\\d+", replacement = "")
+  return(x_clean)
+  
+}
+
+```
+
+
+
+## Function to clean built from other functions
+
+```{r}
+
+#takes a string, returns a tidy data frame with one word per row
+#x is the data frame
+#words is a list of words that we want to remove as a vector
+clean_string <- function(x, words) {
+  
+  #remove special characters
+  x <- remove_special_func(x)
+  
+  
+  #remove numbers 
+  x <- remove_numbers(x)
+  
+  #remove words that we don't want by sequencing along a list of words that we don't want in a loop
+  for (i in seq_along(words)) {
+    
+    x <- replace_func(string = x, old_Word = words[i], replacement_Word = "")
+    x <- tolower(x)
+  }
+  
+  return(x)
+  
+}
+
+
+
+```
