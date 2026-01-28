@@ -276,7 +276,9 @@ sticks_messy_clean_split <- split_string(sticks_messy_clean)
 ```{r}
 #count number of words
 num_words <- nrow(sticks_messy_clean_split)
-sticks_messy_clean_split
+test <- sticks_messy_clean_split %>%
+  mutate(test_column = 1) 
+test
 ```
 
 

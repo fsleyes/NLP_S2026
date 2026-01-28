@@ -173,6 +173,7 @@ remove_numbers <- function(x) {
 
 
 
+
 ## Function to clean built from other functions
 
 ```{r}
