@@ -17,7 +17,9 @@ library(xfun)
 pkg_attach("tidyverse", "here", "kableExtra", 
            "RCurl", "psych", "knitr", 
            "RColorBrewer", 'dplyr', "tidytext",
+           "tm", "stringi", "textstem",
            install=T)
+
 
 jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
 
@@ -39,6 +41,10 @@ if (nrow(x) > 200){
 
 registerS3method("knit_print", "data.frame", print.me)
 
+
+#load in all custom functions from before
+source(here::here("../NLP_Cheatsheet.R"))
+
 ```
 
 
@@ -47,16 +53,68 @@ registerS3method("knit_print", "data.frame", print.me)
 
 What do we need to do to the text?
 
-1. Convert everything to lower case - toLower()
+1. Convert everything to lower case - tolower()
 2. Remove numbers
 3. Squish/remove whitespace
 4. Expand contractions
-5. Remove punctuation
-6. Remove invisible characters or retain only alphabetic
+5. Replace stopwords
+6. Remove punctuation
+7. Remove invisible characters or retain only alphabetic
 
 
 ```{r}
 unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+PnP <- readLines(here::here("./data/PridePrejudice.txt"))
+
+cat(PnP[1:10], sep = "\n")
+```
+
+```{r}
+
+load("~/Documents/School/Classes/Spring 2026/NLP/week3/utils/MIT_stops.rda")
+load("~/Documents/School/Classes/Spring 2026/NLP/week3/utils/replacements_25.rda")
+
+#test <- unabomb
+test <- PnP
+
+test <- tolower(test)
+test <- stripWhitespace(test)
+test <- stri_remove_empty(test)
+test <- gsub("\\b[a-zA-Z]\\b{1}", " ", test) # omits singletons including Aa and Ii
+test <- split_string(test)
+
+contractions_list <- replacements_25$word
+test <- test %>%
+  mutate(new_words = case_when(
+    is.na(string) ~ NA,
+    string %in% contractions_list ~ replacements_25$replacement[match(string, replacements_25$word)],
+    TRUE ~ string),
+    check = ifelse(is.na(string), NA, string %in% contractions_list),
+    string = new_words
+  ) %>%
+  select(string)
+test <- keep_alphab(test)
+test <- split_string(test)
+test$string <- lemmatize_strings(test$string)
+
+
+stopwords <- tolower(MIT_stops$word)
+test <- test %>%
+  mutate(
+    is_stopword = ifelse(
+      is.na(string), NA,
+      string %in% stopwords)
+    ) %>%
+  filter(is_stopword == FALSE) %>%
+  select(string)
+
+test$string <- remove_numbers(test$string)
+
+
+
+
+
+
 
 
 ```

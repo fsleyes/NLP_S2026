@@ -110,7 +110,7 @@ remove_special_func <- function(myString) {
   
 
   #replaces punctuation and special characters with blanks
-  x_clean <- gsub("[[:punct:]]", "", myString)
+  x_clean <- gsub("[[:punct:]]", " ", myString)
 
   
   return(x_clean)
@@ -164,11 +164,27 @@ remove_numbers <- function(x) {
   
   #uses regex to remove any numbers from a string
   x_clean <- x %>%
-    gsub(pattern = "\\d+", replacement = "")
+    gsub(pattern = "\\d+", replacement = " ")
   return(x_clean)
   
 }
 
+```
+
+
+## Remove non-alphabetic characters, numbers, punctuation
+```{r}
+keep_alphab <- function(x) {
+  
+  #uses regex to remove any numbers from a string
+  x_clean <- x %>%
+    mutate(string = gsub(pattern = "[^a-zA-Z]", replacement = " ", string))
+    
+    
+  
+  return(x_clean)
+  
+}
 ```
 
 
@@ -183,23 +199,85 @@ remove_numbers <- function(x) {
 #words is a list of words that we want to remove as a vector
 clean_string <- function(x, words) {
   
-  #remove special characters
-  x <- remove_special_func(x)
+
+  
+  #keep only alphabetic characters
+  #remove non-alphabetic characters, numbers, punctuation
+  x <- keep_alphab(x)
   
   
-  #remove numbers 
-  x <- remove_numbers(x)
   
   #remove words that we don't want by sequencing along a list of words that we don't want in a loop
   for (i in seq_along(words)) {
     
     x <- replace_func(string = x, old_Word = words[i], replacement_Word = "")
-    x <- tolower(x)
+    
   }
+  
+  x <- gsub("\\b[a-zA-Z]\\b{1}", " ", x) #omits singletons including Aa and Ii
+  
+  x <- tolower(x)
+  
+  
+  #splits character object to data frame, one word per row
+  x <- split_string(x)
+  
+  
+  
+  #lemmatize string
   
   return(x)
   
 }
+
+
+
+```
+
+
+
+
+
+## New full cleaning function
+
+
+```{r}
+
+#test <- unabomb
+test <- PnP
+
+test <- tolower(test)
+test <- stripWhitespace(test)
+test <- stri_remove_empty(test)
+test <- gsub("\\b[a-zA-Z]\\b{1}", " ", test) # omits singletons including Aa and Ii
+test <- split_string(test)
+
+contractions_list <- replacements_25$word
+test <- test %>%
+  mutate(new_words = case_when(
+    is.na(string) ~ NA,
+    string %in% contractions_list ~ replacements_25$replacement[match(string, replacements_25$word)],
+    TRUE ~ string),
+    check = ifelse(is.na(string), NA, string %in% contractions_list),
+    string = new_words
+  ) %>%
+  select(string)
+test <- keep_alphab(test)
+test <- split_string(test)
+test$string <- lemmatize_strings(test$string)
+
+
+stopwords <- tolower(MIT_stops$word)
+test <- test %>%
+  mutate(
+    is_stopword = ifelse(
+      is.na(string), NA,
+      string %in% stopwords)
+    ) %>%
+  filter(is_stopword == FALSE) %>%
+  select(string)
+
+test$string <- remove_numbers(test$string)
 
 
 
