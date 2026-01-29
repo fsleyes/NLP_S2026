@@ -71,11 +71,10 @@ cat(PnP[1:10], sep = "\n")
 
 ```{r}
 
-load("~/Documents/School/Classes/Spring 2026/NLP/week3/utils/MIT_stops.rda")
-load("~/Documents/School/Classes/Spring 2026/NLP/week3/utils/replacements_25.rda")
-
-#test <- unabomb
+load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/replacements_25.rda"))
+load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/MIT_stops.rda"))
 test <- PnP
+
 
 test <- tolower(test)
 test <- stripWhitespace(test)
@@ -84,17 +83,17 @@ test <- gsub("\\b[a-zA-Z]\\b{1}", " ", test) # omits singletons including Aa and
 test <- split_string(test)
 
 contractions_list <- replacements_25$word
-test <- test %>%
-  mutate(new_words = case_when(
-    is.na(string) ~ NA,
-    string %in% contractions_list ~ replacements_25$replacement[match(string, replacements_25$word)],
-    TRUE ~ string),
-    check = ifelse(is.na(string), NA, string %in% contractions_list),
-    string = new_words
-  ) %>%
-  select(string)
+# test <- test %>%
+#   mutate(new_words = case_when(
+#     is.na(string) ~ NA,
+#     string %in% contractions_list ~ replacements_25$replacement[match(string, replacements_25$word)],
+#     TRUE ~ string),
+#     check = ifelse(is.na(string), NA, string %in% contractions_list),
+#     string = new_words
+#   ) %>%
+#   select(string)
 test <- keep_alphab(test)
-test <- split_string(test)
+
 test$string <- lemmatize_strings(test$string)
 
 
@@ -109,6 +108,7 @@ test <- test %>%
   select(string)
 
 test$string <- remove_numbers(test$string)
+test <- split_string(test)
 
 
 
@@ -119,3 +119,28 @@ test$string <- remove_numbers(test$string)
 
 ```
 
+
+
+
+# Testing Genie Function
+```{r}
+result <- shawn_Cleaning_Genie(unabomb)
+```
+
+
+```{r}
+
+#takes a string returns a data frame
+split_string <- function(x) {
+  
+  #convert to a data frame first
+  cleaned_x <- data.frame(string = x) %>%
+    separate_longer_delim(string, delim = " ") %>% #pivots to long format based on delimeter of space
+    filter(string != "") #filters so that empty rows are deleted
+  return(cleaned_x)
+  
+}
+
+
+
+```

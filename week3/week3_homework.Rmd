@@ -1,0 +1,209 @@
+---
+title: "week3_homework"
+author: "Shawn Wang"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    css: !expr here::here("../stylesTemplates/sw_1.css")
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", 
+           "RCurl", "psych", "knitr", 
+           "RColorBrewer", 'dplyr', "tidytext",
+           "tm", "stringi", "textstem",
+           install=T)
+
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+
+
+#load in all custom functions from before
+source(here::here("../NLP_Cheatsheet.R"))
+```
+
+
+
+
+
+# CLEANING GENIE
+```{r}
+
+
+#load in the datasets that are needed to remove stopwords and expand contractions
+load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/replacements_25.rda"))
+load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/MIT_stops.rda"))
+
+
+#x is a character object (string), NOT a data frame
+shawn_Cleaning_Genie <- function(x) {
+  
+  
+  #start as character object
+  x <- tolower(x) #convert to lowercase
+  x <- stripWhitespace(x) #strip whitespace
+  x <- stri_remove_empty(x) #removes empty strings
+  x <- gsub("\\b[a-zA-Z]\\b{1}", " ", x) # omits singletons including Aa and Ii
+  x <- split_string(x) #pivots to one word per row
+  
+  
+  #load in the list of contractions that we want to replace
+  contractions_list <- replacements_25$word
+  
+  
+  x <- x %>%
+    mutate(new_words = case_when( #create new variable called new_words that will have the replaced words
+      is.na(string) ~ NA, #if empty then do nothing
+      string %in% contractions_list ~ replacements_25$replacement[match(string, replacements_25$word)], #if word is a contraction, replace it with the expanded version
+      TRUE ~ string), #if it's none of those options, just keep the original
+      check = ifelse(is.na(string), NA, string %in% contractions_list), #this is for debugging
+      string = new_words #reassign to the string name
+    ) %>%
+    select(string) #delete the intermediate variables
+  x <- keep_alphab(x) #remove all special characters
+
+  x$string <- lemmatize_strings(x$string) #lemmatize the words, remove affixes etc
+  
+  
+  
+  #load in list of stopwords to remove
+  stopwords <- tolower(MIT_stops$word)
+  x <- x %>%
+    mutate(
+      is_stopword = ifelse( #create new variable identifying which words are stopwords
+        is.na(string), NA, #if empty do nothing
+        string %in% stopwords) #if not empty then TRUE if stopword, FALSE if not stopword
+      ) %>%
+    filter(is_stopword == FALSE) %>% #keep only the words that are NOT stopwords
+    select(string) #delete intermediate variables
+  
+  x$string <- remove_numbers(x$string) #remove any numbers that have been introduced in the lemmatize fn
+  x <- split_string(x) #this last step removes all other whitespace and just cleans up in general
+  
+  return(x)
+  
+}
+
+
+```
+
+
+
+# OTHER CUSTOM FUNCTIONS
+
+## Remove non-alphabetic characters, numbers, punctuation
+```{r}
+keep_alphab <- function(x) {
+  
+  #uses regex to remove any numbers from a string
+  x_clean <- x %>%
+    mutate(string = gsub(pattern = "[^a-zA-Z]", replacement = " ", string))
+    
+    
+  
+  return(x_clean)
+  
+}
+```
+
+
+## Split string
+```{r}
+
+#takes a string returns a data frame
+split_string <- function(x) {
+  
+  #convert to a data frame first
+  cleaned_x <- data.frame(string = x) %>%
+    separate_longer_delim(string, delim = " ") %>% #pivots to long format based on delimeter of space
+    filter(string != "") #filters so that empty rows are deleted
+  return(cleaned_x)
+  
+}
+
+
+
+```
+
+# EXAMPLES
+
+
+## Cleaning the Unabomber Manifesto
+
+```{r}
+
+#load in text as a single character vector
+unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+
+#preview text
+cat(unabomb[1:10], sep = "\n")
+```
+
+
+Above we see the raw version of the manifesto. We can apply the cleaning genie:
+
+```{r}
+unabomb_clean <- shawn_Cleaning_Genie(unabomb) #apply function
+print(unabomb_clean) #print results
+```
+
+
+
+
+## Cleaning Pride and Prejudice
+
+```{r}
+#read in text of pride and prejudice
+PnP <- paste(readLines("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/data/PridePrejudice.txt"))
+
+
+#apply the function
+PnP_clean <- shawn_Cleaning_Genie(PnP)
+
+#view results
+print(PnP_clean)
+```
+
+
+
+
+
+## Cleaning Sherlock Holmes
+```{r}
+
+#load in text
+sherlock <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/SherlockHolmes.txt'))
+
+
+#apply function
+sherlock_clean <- shawn_Cleaning_Genie(sherlock)
+
+
+#print results
+print(sherlock_clean)
+```
+
