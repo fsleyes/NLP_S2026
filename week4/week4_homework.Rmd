@@ -273,6 +273,9 @@ quanteda.textplots::textplot_wordcloud(dfm_unabomb, random_order = FALSE, rotati
 
 ## Document Feature Matrix
 ```{r}
+
+
+#print top 20 words
 topfeatures(dfm_unabomb, 20)
 ```
 
