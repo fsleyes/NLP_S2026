@@ -1,12 +1,12 @@
 ---
-title: "week3_homework"
+title: "week4_homework"
 author: "Shawn Wang"
 date: "`r Sys.Date()`"
 output: 
   html_document:
     toc: true
     toc_float: true
-    toc_depth: 2
+    toc_depth: 1
     css: !expr here::here("../stylesTemplates/sw_1.css")
 ---
 
@@ -20,6 +20,10 @@ pkg_attach("tidyverse", "here", "kableExtra",
            "tm", "stringi", "textstem",
            install=T)
 pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', 'quanteda', 'readtext', install=T)
+
+
+library("quanteda.textplots")
+library(quanteda.textstats)
 
 jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
 
@@ -40,21 +44,18 @@ if (nrow(x) > 200){
 }
 
 registerS3method("knit_print", "data.frame", print.me)
-
-
-#load in all custom functions from before
-source(here::here("../NLP_Cheatsheet.R"))
 ```
 
 
 
 
+# Functions
 
-# CLEANING GENIE
+## Cleaning Genie
 ```{r}
 
 
-#load in the datasets that are needed to remove stopwords and expand contractions
+#load in the datasets that are needed to remove stopwords and 
 load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/replacements_25.rda"))
 load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/MIT_stops.rda"))
 
@@ -100,8 +101,12 @@ shawn_Cleaning_Genie <- function(x) {
       ) %>%
     filter(is_stopword == FALSE) %>% #keep only the words that are NOT stopwords
     select(string) #delete intermediate variables
+
   
-  x$string <- remove_numbers(x$string) #remove any numbers that have been introduced in the lemmatize fn
+  x$string <- gsub(x = x$string, pattern = "\\d+", replacement = " ") #remove numbers
+  
+  
+  
   x <- split_string(x) #this last step removes all other whitespace and just cleans up in general
   
   return(x)
@@ -111,9 +116,6 @@ shawn_Cleaning_Genie <- function(x) {
 
 ```
 
-
-
-# OTHER CUSTOM FUNCTIONS
 
 ## Remove non-alphabetic characters, numbers, punctuation
 ```{r}
@@ -149,61 +151,128 @@ split_string <- function(x) {
 
 ```
 
-# EXAMPLES
 
 
-## Cleaning the Unabomber Manifesto
+
+
+# Tasks
+
+Homework:
+
+1. Read in Unabomber
+2. Output structure - what form is it coming in? str?
+3. Run cleaning genie - import cleaned version as a corpus
+4. Table of lexical characteristics pre/post cleaning - number of types/tokens etc.
+5. Lexical dispersion plot - pick 5 words
+6. Word cloud
+7. Print DFM - top 20 words
+
+
+## Read in Unabomber
 
 ```{r}
 
 #load in text as a single character vector
-unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+unabomb_raw <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
 
-#preview text
-cat(unabomb[1:10], sep = "\n")
-```
-
-
-Above we see the raw version of the manifesto. We can apply the cleaning genie:
-
-```{r}
-unabomb_clean <- shawn_Cleaning_Genie(unabomb) #apply function
-print(unabomb_clean) #print results
 ```
 
 
 
-
-## Cleaning Pride and Prejudice
+## Output structure
 
 ```{r}
-#read in text of pride and prejudice
-PnP <- paste(readLines("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/data/PridePrejudice.txt"))
+str(unabomb_raw)
+
+```
+
+The Unabomber Manifesto is being imported as a character vector.
+
+## Run cleaning genie
+
+```{r}
+
+#run cleaning genie
+unabomb_clean_df <- shawn_Cleaning_Genie(unabomb_raw) %>%
+  summarize(author = "TK",
+            doc_text = paste(string, collapse = " "))
+
+  
+
+unabomb_corpus <- corpus(unabomb_clean_df, 
+                         doc_id_field = "author",
+                         text_field = "doc_text")
+
+tokens_unabomb <- tokens(unabomb_corpus)
+dfm_unabomb <- dfm(tokens_unabomb)
+
+names(unabomb_corpus) <- "Unabomber Manifesto"
+```
 
 
-#apply the function
-PnP_clean <- shawn_Cleaning_Genie(PnP)
 
-#view results
-print(PnP_clean)
+## Some off-the-shelf statistics
+```{r}
+#lexical diversity
+print(textstat_lexdiv(dfm_unabomb, measure = c("TTR", "C", "R", "CTTR", "U", "S", "K", "I", "D", "Vm", "Maas"), log.base = 10))
+
+
+```
+
+
+
+## Table of lexical characteristcs pre/post
+
+```{r}
+summary(unabomb_corpus)
+
+
+unabomb_raw_df <- data.frame(
+  author = "TK",
+  doc_text = unabomb_raw
+) %>%
+  summarize(author = unique(author),
+            doc_text = paste(doc_text, collapse = " "))
+unabomb_raw_corpus <- corpus(unabomb_raw_df, doc_id_field = "author", text_field = "doc_text")
+summary(unabomb_raw_corpus)
+```
+
+There are 2837 unique words and 15648 words total in the cleaned manifesto, resulting in a TTR of `r round(2837/15648, 2)`. There are 4849 unique words and 38997 words total in the uncleaned manifesto, resulting in a TTR of `r round(4849/38997, 2)`.
+
+
+
+## Lexical Dispersion Plot
+
+```{r}
+
+
+
+textplot_xray(
+    kwic(tokens(unabomb_corpus), pattern = "capitalism"),
+    kwic(tokens(unabomb_corpus), pattern = "industrial"),
+    kwic(tokens(unabomb_corpus), pattern = "socialism"),
+    kwic(tokens(unabomb_corpus), pattern = "science"),
+    kwic(tokens(unabomb_corpus), pattern = "intelligence"),
+    scale = "absolute"
+)
 ```
 
 
 
 
+## Word Cloud
 
-## Cleaning Sherlock Holmes
 ```{r}
 
-#load in text
-sherlock <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/SherlockHolmes.txt'))
+
+quanteda.textplots::textplot_wordcloud(dfm_unabomb, random_order = FALSE, rotation = .25, color = "red")
+```
 
 
-#apply function
-sherlock_clean <- shawn_Cleaning_Genie(sherlock)
 
 
-#print results
-print(sherlock_clean)
+## Document Feature Matrix
+```{r}
+topfeatures(dfm_unabomb, 20)
 ```
 

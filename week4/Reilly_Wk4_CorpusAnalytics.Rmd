@@ -1,0 +1,239 @@
+---
+title: "Corpus Analytics and Visualization in Quanteda"
+author: "Jamie Reilly, Ph.D."
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+  toc_depth: 1
+    css: !expr here::here("../StylesTemplates/jr_19.css")
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", 
+           "RCurl", "psych", "knitr", 
+           "RColorBrewer", 'dplyr', "tidytext",
+           "tm", "stringi", "textstem",
+           install=T)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', 'quanteda', 'readtext', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+#read csv data file from github
+#step1 <- "https://github.com/Reilly-ConceptsCognitionLab/sandbox_scrapfiles/raw/main/fakedat.csv"
+#step2 <- read.csv(step1, header=T)
+#read string data using 'here' from a local directory
+#to_R <- readLines(here("data", "MyRaw.txt")) ---- using 'here' to read in data
+#to_format <- paste(to_R, collapse=" ")
+#textfromgittoR <- paste(readLines("https://github.com/reilly-lab/TempleTextMine2020/raw/master/unabomber_manifesto.txt"), collapse = " ")  #from github
+```
+
+# Load Some Texts
+Here's a sample text string we will work from. This has no missing values and no punctuation. 
+```{r}
+#unabomber manifesto
+unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+
+#Moby Dick
+#uses readtext package
+mobydick <- as.character(readtext("http://www.gutenberg.org/cache/epub/2701/pg2701.txt"))
+
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/sample_text_join.rda?raw=true"))
+my_simple_sample <- sample_text_join 
+
+#Note this contains meta-data
+print(my_simple_sample)
+```
+# Prep for Analytics
+Let's get analytics on this simple text sample. We will use the `Quanteda` package. <br>
+https://quanteda.io/articles/quickstart.html
+```{r}
+#load the quanteda package
+#library(quanteda)
+#First step in quanteda is to convert the target text into a corpus retaining metadata. If you are doing this from a dataframe, you would tell quanteda the docid column and the text_field column
+my_simple_corpus  <- corpus(dat, docid_field = "author", text_field = "doc_text")
+
+#or read in a character vector as a corpus object here's Moby Dick
+md <- corpus(mobydick)
+```
+
+# Ask `Quanteda` for analytics
+First summarize your carpus object
+```{r}
+#we'll summarize Moby Dick
+summary(md)
+```
+
+# kwic (keyword in context)
+search for a keyword and show linguistic contexts
+```{r}
+#tokenize the corpus object of Moby Dick 
+md_tokenized <- tokens(md)
+kwic(md_tokenized, pattern = "harpoon")
+```
+
+# tokenizer
+Quanteda has a powerful built in tokenizer that breaks a document into tokens and stores each token as a new document
+```{r}
+md_tokenized <- tokens(md, remove_numbers = TRUE,  remove_punct = TRUE, remove_separators = FALSE)
+```
+
+# document feature matrix
+onvert the corpus to a document term matrix -- well to be more precise, a document feature matrix because elements that are not words are also included
+```{r}
+# Create a tokenized version of the corpus md, removing punctuation and stopwords
+tokens_md <- tokens(md, remove_punct = TRUE) %>% tokens_remove(stopwords("SMART"))
+
+# Create a document-feature matrix, applying stemming
+md_dfm <- dfm(tokens_md, dfm_stem = TRUE)
+topfeatures(md_dfm, 15)
+
+```
+
+# Visualize Frequency Trends
+## Plot Visualizations
+```{r}
+#We will load quanteda and quanteda.textplots
+library("quanteda.textplots")
+```
+
+## Wordcloud
+```{r}
+quanteda.textplots::textplot_wordcloud(md_dfm_small, random_order = FALSE, rotation = 0.25) #word cloud or another way
+topfeatures(md_dfm, 70)
+```
+
+## Lexical Dispersion Plot
+This will show you where keywords of interest appear throughout the document using an x-ray plot
+```{r}
+## Moby Dick
+names(mobydick) <- "Moby Dick"
+
+#uses library quanteda.textplots
+textplot_xray(
+    kwic(tokens(mobydick), pattern = "whale"),
+    kwic(tokens(mobydick), pattern = "ahab"),
+    kwic(tokens(mobydick), pattern = "ishmael"),
+    kwic(tokens(mobydick), pattern = "kill"),
+    scale = "absolute"
+) 
+```
+
+## Text Stats
+Off-the-shelf measures of lexical diversity in Quanteda and what they mean <br>
+```{r}
+# corpus analytics
+library(quanteda.textstats)
+
+#lexical diversity, can take a dfm or corpus
+print(textstat_lexdiv(md, measure = c("TTR", "C", "R", "CTTR", "U", "S", "K", "I", "D", "Vm", "Maas"), log.base = 10))
+
+#readability - takes a character or corpus object
+textstat_readability(mobydick, measure = "Flesch", remove_hyphens = TRUE)
+```
+
+
+## Unambomber
+```{r}
+#TBD
+```
+
+
+
+
+# Load a very large lexical database
+Inspect and tell me about it.
+```{r}
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+```
+
+
+
+
+## Archive
+```{r, eval=F}
+#read from my computer, save as rda then post on github public repo
+sample_text_join <- read.csv("utilities/sample_join.csv")
+save(sample_text_join, file="utilities/sample_text_join.rda")
+```
+
+
+# Import Unabomber
+```{r, eval=F}
+#Import and inspect the raw unabomber manifesto, inspect
+unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+
+#Print first few lines of unabomber manifesto
+cat(unabomb[1:50], sep = "\n")
+str(unabomb)
+```
+
+
+# Define Cleaning Genie
+```{r, eval=F}
+clean_genie <- function(dat) {
+  x <- data.frame(dat)  #coerce input to dataframe
+  
+#load stopword and replacement lists from reillylab public repo
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
+  
+x <- tolower(x) #transform all text in target colummn to lowercase
+
+#define word replacement fn using a 'for' loop
+replace_words <- function(text_vector, replacement_df) {
+ for (i in seq_len(nrow(replacement_df))) {
+   text_vector <- gsub(
+     pattern = replacement_df$word[i],
+     replacement = replacement_df$replacement[i],
+     x = text_vector,
+     ignore.case = TRUE
+   )
+ }
+ return(text_vector)
+}
+
+x <- replace_words(x, replacement_df = replacements_25)
+x <- gsub("[^A-Za-z ]"," ",x) #removes any nonalphabetic characters, including numerals and punctuation. 
+x <- str_squish(gsub("\\s+", " ", x)) # RemoveWhitespace
+
+#Split using strsplit function by the occurence of a space. 
+x <- strsplit(x, split = " ")
+
+#Flatten this list 
+x <-  unlist(x, recursive = TRUE, use.names = TRUE)
+ 
+# Stopword removal if requested
+x <- tm::removeWords(x, Temple_stops25$word)
+
+#removes empty rows
+x <- x %>% tidyr::drop_na() 
+return(x)  
+}
+
+```
+
+
+# Test fn
+```{r, eval=F}
+mycleandat <- avery_clean_genie(unabomb)
+print(mycleandat) 
+```
+

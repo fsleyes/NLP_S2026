@@ -1,13 +1,8 @@
 ---
-title: "week3_homework"
+title: "week4_homework"
 author: "Shawn Wang"
 date: "`r Sys.Date()`"
-output: 
-  html_document:
-    toc: true
-    toc_float: true
-    toc_depth: 2
-    css: !expr here::here("../stylesTemplates/sw_1.css")
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -40,21 +35,16 @@ if (nrow(x) > 200){
 }
 
 registerS3method("knit_print", "data.frame", print.me)
-
-
-#load in all custom functions from before
-source(here::here("../NLP_Cheatsheet.R"))
 ```
 
 
+# Functions
 
-
-
-# CLEANING GENIE
+## Cleaning Genie
 ```{r}
 
 
-#load in the datasets that are needed to remove stopwords and expand contractions
+#load in the datasets that are needed to remove stopwords and 
 load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/replacements_25.rda"))
 load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/MIT_stops.rda"))
 
@@ -100,8 +90,12 @@ shawn_Cleaning_Genie <- function(x) {
       ) %>%
     filter(is_stopword == FALSE) %>% #keep only the words that are NOT stopwords
     select(string) #delete intermediate variables
+
   
-  x$string <- remove_numbers(x$string) #remove any numbers that have been introduced in the lemmatize fn
+  x$string <- gsub(x = x$string, pattern = "\\d+", replacement = " ") #remove numbers
+  
+  
+  
   x <- split_string(x) #this last step removes all other whitespace and just cleans up in general
   
   return(x)
@@ -111,9 +105,6 @@ shawn_Cleaning_Genie <- function(x) {
 
 ```
 
-
-
-# OTHER CUSTOM FUNCTIONS
 
 ## Remove non-alphabetic characters, numbers, punctuation
 ```{r}
@@ -149,61 +140,141 @@ split_string <- function(x) {
 
 ```
 
-# EXAMPLES
 
 
-## Cleaning the Unabomber Manifesto
+
+
+# Load some files
 
 ```{r}
-
-#load in text as a single character vector
+#unabomber manifesto
 unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
 
-#preview text
-cat(unabomb[1:10], sep = "\n")
-```
+#Moby Dick
+#uses readtext package
+mobydick <- as.character(readtext("http://www.gutenberg.org/cache/epub/2701/pg2701.txt"))
 
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/sample_text_join.rda?raw=true"))
+my_simple_sample <- sample_text_join 
 
-Above we see the raw version of the manifesto. We can apply the cleaning genie:
-
-```{r}
-unabomb_clean <- shawn_Cleaning_Genie(unabomb) #apply function
-print(unabomb_clean) #print results
-```
-
-
-
-
-## Cleaning Pride and Prejudice
-
-```{r}
-#read in text of pride and prejudice
-PnP <- paste(readLines("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/data/PridePrejudice.txt"))
-
-
-#apply the function
-PnP_clean <- shawn_Cleaning_Genie(PnP)
-
-#view results
-print(PnP_clean)
+#Note this contains meta-data
+print(my_simple_sample)
 ```
 
 
 
 
+# Prepare for analyses
 
-## Cleaning Sherlock Holmes
+## Convert to corpus using Quanteda package
 ```{r}
 
-#load in text
-sherlock <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/SherlockHolmes.txt'))
+#specify the IDs as well as the text
+simple_corpus <- corpus(my_simple_sample, 
+                        doc_id_field = "author", 
+                        text_field = "doc_text")
 
 
-#apply function
-sherlock_clean <- shawn_Cleaning_Genie(sherlock)
-
-
-#print results
-print(sherlock_clean)
+#you can also load in a singular text file as a character object as a corpus
+mobyDick <- corpus(mobydick)
 ```
+
+
+
+## Summarize corpus
+```{r}
+summary(mobyDick)
+```
+
+
+## kwic
+Keyword in context searches for a keyword and shows linguistic contexts
+
+```{r}
+md_tokenized <- tokens(mobyDick)
+kwic(md_tokenized, pattern = "salt")
+```
+
+
+## Quanteda's cleaning function
+
+```{r}
+md_tokenized <- tokens(mobyDick, remove_numbers = TRUE, remove_punct = TRUE, remove_separators = FALSE)
+```
+
+
+
+## Document Feature Matrix
+Converts corpus to document feature matrix (not a document term matrix) because there are features that are not words that are included currently
+```{r}
+
+#remove punctuation and remove stopwords
+tokens_md <- tokens(mobyDick, remove_punct = TRUE) %>% tokens_remove(stopwords("SMART"))
+
+md_dfm <- dfm(tokens_md)
+topfeatures(md_dfm, 15)
+```
+
+# Visualization
+
+```{r}
+library("quanteda.textplots")
+library(quanteda.textstats)
+```
+
+
+## Word Cloud
+
+```{r}
+
+
+quanteda.textplots::textplot_wordcloud(md_dfm, random_order = FALSE, rotation = .25, color = "red")
+
+topfeatures(md_dfm, 70)
+```
+
+
+
+## Plot DFM
+
+```{r}
+plot(md_dfm)
+```
+
+
+
+## Lexical dispertion plot
+
+```{r}
+names(mobydick) <- "Moby Dick"
+
+textplot_xray(
+    kwic(tokens(mobydick), pattern = "whale"),
+    kwic(tokens(mobydick), pattern = "ahab"),
+    kwic(tokens(mobydick), pattern = "ishmael"),
+    kwic(tokens(mobydick), pattern = "kill"),
+    scale = "absolute"
+)
+```
+
+
+
+## Text stats
+Off the shelf from Quanteda package
+```{r}
+
+#lexical diversity
+print(textstat_lexdiv(md_dfm, measure = c("TTR", "C", "R", "CTTR", "U", "S", "K", "I", "D", "Vm", "Maas"), log.base = 10))
+
+
+#readability
+textstat_readability(mobyDick, measure = "Flesch", remove_hyphens = TRUE)
+```
+
+
+
+
+Homework:
+
+
 
