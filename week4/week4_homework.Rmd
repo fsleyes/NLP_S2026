@@ -49,10 +49,9 @@ registerS3method("knit_print", "data.frame", print.me)
 
 
 
-# Functions
 
-## Cleaning Genie
-```{r}
+
+```{r, include = FALSE}
 
 
 #load in the datasets that are needed to remove stopwords and 
@@ -117,8 +116,8 @@ shawn_Cleaning_Genie <- function(x) {
 ```
 
 
-## Remove non-alphabetic characters, numbers, punctuation
-```{r}
+
+```{r, include = FALSE}
 keep_alphab <- function(x) {
   
   #uses regex to remove any numbers from a string
@@ -133,8 +132,7 @@ keep_alphab <- function(x) {
 ```
 
 
-## Split string
-```{r}
+```{r, include = FALSE}
 
 #takes a string returns a data frame
 split_string <- function(x) {
@@ -170,6 +168,7 @@ Homework:
 
 ## Read in Unabomber
 
+Here I am reading in the text files:
 ```{r}
 
 #load in text as a single character vector
@@ -177,7 +176,7 @@ unabomb_raw <- paste(readLines('https://raw.githubusercontent.com/Reilly-Concept
 
 ```
 
-
+<br>
 
 ## Output structure
 
@@ -188,30 +187,40 @@ str(unabomb_raw)
 
 The Unabomber Manifesto is being imported as a character vector.
 
-## Run cleaning genie
+<br>
 
+## Run cleaning genie
+This cleaning genie will clean for punctuation and special characters, expand contractions, remove stopwords, lemmatize, etc. to return a tidy data frame where each row is a word. However, for conversion into a corpus, we will need to smash all of those rows of words back into a single cell. We then turn that corpus into tokens and then a document feature matrix. 
 ```{r}
 
 #run cleaning genie
-unabomb_clean_df <- shawn_Cleaning_Genie(unabomb_raw) %>%
-  summarize(author = "TK",
-            doc_text = paste(string, collapse = " "))
+unabomb_clean_df <- shawn_Cleaning_Genie(unabomb_raw) %>% #clean and tidy the raw text
+  summarize(author = "TK", 
+            doc_text = paste(string, collapse = " ")) #turn back into a corpus-ready form
 
   
-
+#this cleaned df is going to be one row with column author and another column doc_text, which you feed into corpus()
 unabomb_corpus <- corpus(unabomb_clean_df, 
                          doc_id_field = "author",
                          text_field = "doc_text")
 
+
+#convert the corpus into tokens
 tokens_unabomb <- tokens(unabomb_corpus)
+
+#turn the tokens into a document feature matrix
 dfm_unabomb <- dfm(tokens_unabomb)
 
 names(unabomb_corpus) <- "Unabomber Manifesto"
 ```
 
 
+<br>
+
 
 ## Some off-the-shelf statistics
+
+Here are some lexical indices from the unabomber manifesto from the quanteda package:
 ```{r}
 #lexical diversity
 print(textstat_lexdiv(dfm_unabomb, measure = c("TTR", "C", "R", "CTTR", "U", "S", "K", "I", "D", "Vm", "Maas"), log.base = 10))
@@ -221,12 +230,15 @@ print(textstat_lexdiv(dfm_unabomb, measure = c("TTR", "C", "R", "CTTR", "U", "S"
 
 
 
+<br>
+
 ## Table of lexical characteristcs pre/post
+
 
 ```{r}
 summary(unabomb_corpus)
 
-
+#this unabomb_raw_df is just the raw data turned into a corpus for comparison purposes but not used in further analysis
 unabomb_raw_df <- data.frame(
   author = "TK",
   doc_text = unabomb_raw
@@ -239,14 +251,17 @@ summary(unabomb_raw_corpus)
 
 There are 2837 unique words and 15648 words total in the cleaned manifesto, resulting in a TTR of `r round(2837/15648, 2)`. There are 4849 unique words and 38997 words total in the uncleaned manifesto, resulting in a TTR of `r round(4849/38997, 2)`.
 
+<br>
 
 
 ## Lexical Dispersion Plot
 
+We can generate a lexical dispersion plot to display the prevalence of words that we are interested in:
 ```{r}
 
 
-
+#kwic is keywords in context, and searches for the words that we specify for it under "pattern"
+#textplot_xray plots the dispersion
 textplot_xray(
     kwic(tokens(unabomb_corpus), pattern = "capitalism"),
     kwic(tokens(unabomb_corpus), pattern = "industrial"),
@@ -259,9 +274,11 @@ textplot_xray(
 
 
 
+<br>
 
 ## Word Cloud
 
+We can also generate a wordcloud straight from the document feature matrix object using quanteda:
 ```{r}
 
 
@@ -269,9 +286,11 @@ quanteda.textplots::textplot_wordcloud(dfm_unabomb, random_order = FALSE, rotati
 ```
 
 
-
+<br>
 
 ## Document Feature Matrix
+
+Finally, we can show the top 20 most common words in our cleaned dataset by feeding the document feature matrix object into the topfeatures() function while specifying the number of words we want:
 ```{r}
 
 
