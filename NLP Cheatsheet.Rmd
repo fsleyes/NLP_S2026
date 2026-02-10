@@ -6,7 +6,7 @@ output:
   html_document:
     toc: true
     toc_float: true
-    toc_depth: 2
+    toc_depth: 1
     css: !expr here::here("./stylesTemplates/sw_1.css")
 ---
 
@@ -14,8 +14,14 @@ output:
 knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
 
 library(xfun)
-pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', "tidytext",
-           "tm", "stringi", "textstem", install=T)
+pkg_attach("tidyverse", "here", "kableExtra", 
+           "RCurl", "psych", "knitr", 
+           "RColorBrewer", 'dplyr', "tidytext",
+           "tm", "stringi", "textstem",
+           install=T)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', 'quanteda', 'readtext', install=T)
+library("quanteda.textplots")
+library(quanteda.textstats)
 
 jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
 
@@ -61,7 +67,7 @@ add_func <- function(x, y) {
 
 ```
 
-
+<br>
 
 ## Function to mean 2 numbers
 ```{r}
@@ -80,7 +86,7 @@ mean_func <- function(x, y) {
 
 ```
 
-
+<br>
 
 ## Function to remove any word from a string
 ```{r}
@@ -101,7 +107,7 @@ replace_func <- function(string, old_Word, replacement_Word) {
 
 
 ```
-
+<br>
 
 ## Function to remove special characters
 ```{r}
@@ -121,7 +127,7 @@ remove_special_func <- function(myString) {
 
 
 ```
-
+<br>
 
 ## Function to split string into data frame, one word per row
 ```{r}
@@ -140,6 +146,9 @@ split_string <- function(x) {
 
 
 ```
+
+<br>
+
 ## Function to remove "the"
 ```{r}
 
@@ -155,6 +164,7 @@ remove_the <- function(x) {
 ```
 
 
+<br>
 
 ## Remove numbers
 ```{r}
@@ -172,6 +182,7 @@ remove_numbers <- function(x) {
 
 ```
 
+<br>
 
 ## Remove non-alphabetic characters, numbers, punctuation
 ```{r}
@@ -190,6 +201,7 @@ keep_alphab <- function(x) {
 
 
 
+<br>
 
 ## Function to clean built from other functions
 
@@ -238,6 +250,7 @@ clean_string <- function(x, words) {
 
 
 
+<br>
 
 ## New full cleaning function
 
@@ -310,26 +323,119 @@ shawn_Cleaning_Genie <- function(x) {
 
 
 
+
+
+<br>
+<br>
+<br>
+<br>
+
+
+
+
 # EXAMPLES
 
 
 ## Cleaning the Unabomber Manifesto
 
+Loading in the data, applying the cleaning function, and converting to corpus/document feature matrix:
 ```{r}
 
 #load in text as a single character vector
-unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
-
-
-#inspect the raw file
-cat(unabomb[1:10], sep = "\n")
+unabomb_raw <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
 
 
 
-#apply the cleaning genie function
-unabomb_clean <- shawn_Cleaning_Genie(unabomb)
 
-#print
-print(unabomb_clean)
+
+
+#run cleaning genie
+unabomb_clean_df <- shawn_Cleaning_Genie(unabomb_raw) %>%
+  summarize(author = "TK",
+            doc_text = paste(string, collapse = " "))
+
+unabomb_corpus <- corpus(unabomb_clean_df, 
+                         doc_id_field = "author",
+                         text_field = "doc_text")
+
+tokens_unabomb <- tokens(unabomb_corpus)
+dfm_unabomb <- dfm(tokens_unabomb)
+
+names(unabomb_corpus) <- "Unabomber Manifesto"
 ```
 
+<br>
+
+## Getting some basic off-the-shelf statistics about your corpus
+
+dfm_unabomb has to be a document frame matrix type object here:
+```{r}
+#lexical diversity
+
+print(textstat_lexdiv(dfm_unabomb, measure = c("TTR", "C", "R", "CTTR", "U", "S", "K", "I", "D", "Vm", "Maas"), log.base = 10))
+
+```
+
+<br>
+
+## Table of lexical characteristcs pre/post
+
+```{r}
+#summary gives you the types and tokens
+summary(unabomb_corpus)
+
+
+unabomb_raw_df <- data.frame( #creating a new data frame here to give it some info it wants
+  author = "TK",
+  doc_text = unabomb_raw
+) %>%
+  summarize(author = unique(author), #group by author - this might change when there are multiple works per author
+            doc_text = paste(doc_text, collapse = " ")) #collapse the text all back into one cell for the corpus conversion
+unabomb_raw_corpus <- corpus(unabomb_raw_df, doc_id_field = "author", text_field = "doc_text") #convert to corpus
+summary(unabomb_raw_corpus) #take a look at type and tokens
+```
+
+
+
+<br>
+
+## Lexical Dispersion Plot
+
+
+Pick the words that you want to display on your dispersion plot:
+```{r}
+
+
+
+textplot_xray(
+    kwic(tokens(unabomb_corpus), pattern = "capitalism"),
+    kwic(tokens(unabomb_corpus), pattern = "industrial"),
+    kwic(tokens(unabomb_corpus), pattern = "socialism"),
+    kwic(tokens(unabomb_corpus), pattern = "science"),
+    kwic(tokens(unabomb_corpus), pattern = "intelligence"),
+    scale = "absolute"
+)
+```
+
+<br>
+
+## Word Cloud
+
+You can do a word cloud from quanteda:
+```{r}
+quanteda.textplots::textplot_wordcloud(dfm_unabomb, random_order = FALSE, rotation = .25, color = "red")
+```
+
+
+
+<br>
+
+## Document Feature Matrix
+
+You can also find the document feature matrix using topfeatures where you give it how many words you want:
+```{r}
+
+
+#print top 20 words
+topfeatures(dfm_unabomb, 20)
+```
