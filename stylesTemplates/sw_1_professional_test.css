@@ -1,0 +1,144 @@
+/* Theme: Desert Sunset 
+  Background: Eggshell White (#F9F9F9)
+  Primary Accents: Terracotta, Sand, and Deep Coffee
+*/
+
+/* Whole document */
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 13pt;
+  background-color: #f9f9f9;
+  color: #4a3732; /* Deep Coffee for better readability than pure black */
+  margin: 0 auto;
+  max-width: 100%;
+  line-height: 1.6;
+}
+
+/* Content Container */
+.toc-content {
+  margin-left: -15px;
+  padding-left: 0px;
+}
+
+/* Headers */
+h1.title {
+  color: #4a3732; 
+  font-size: 22pt;
+  padding-top: 1em;
+  padding-bottom: .2em;
+  text-align: left;
+  font-weight: bold;
+  border-bottom: 2px solid #f2d5ce; /* Terracotta underline */
+}
+
+h1, .h1, h2, .h2, h3, .h3 {
+  margin-top: 1.5rem;
+  padding-bottom: .3em;
+  padding-left: .5em;
+  padding-top: .3em;
+  font-weight: bold;
+}
+
+h1 {
+  font-size: 18pt;
+  color: #4a3732; 
+  background-color: #f2d5ce; /* Pale Terracotta */
+  border-radius: 4px;
+}
+
+h2 { 
+  font-size: 16pt;
+  color: #333333;
+  background-color: #eae0d5; /* Muted Sand */
+  border-radius: 4px;
+}
+
+h3 { 
+  font-size: 14pt;
+  color: #a67c52; /* Soft Ochre */
+  background-color: rgba(242, 213, 206, 0.3); /* Transparent Terracotta hint */
+  border-left: 5px solid #a67c52;
+}
+
+/* Code Chunks */
+pre {
+  max-height: 350px;
+  background-color: #f5f1ed; /* Linen */
+  border: 1px solid #eae0d5;
+  border-left: 4px solid #a67c52;
+  overflow-y: auto;
+  padding: 1em;
+  border-radius: 4px;
+}
+
+.r code {
+  white-space: pre;
+  color: #4a3732;
+}
+
+pre code {
+  white-space: pre-wrap;
+}
+
+/* LINKS */
+
+a:link {
+  color: #a67c52;
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px solid transparent;
+  transition: all 0.3s ease;
+}
+
+a:visited {
+  color: #8c6a47;
+}
+
+a:hover { 
+  color: #4a3732;
+  background-color: #f2d5ce;
+  border-bottom: 1px solid #4a3732;
+}
+
+/* TOC Customization */
+
+#TOC::before {
+  content: "";
+  display: block;
+  top: 0px;
+  height: 175px;
+  width: 150px;
+  margin: 20px auto;
+  background-image: url("temple_logo.jpg");
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+div#TOC {
+  font-size: 10pt;
+  border: 1px solid #eae0d5;
+  background: white;
+  padding: 10px;
+  width: 18%; 
+  max-width: 250px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+}
+
+ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* List Group / Active Items */
+.list-group-item.active, 
+.list-group-item.active:hover {
+  z-index: 2;
+  color: #4a3732;
+  text-decoration: none;
+  background-color: #f2d5ce; /* Active Terracotta highlight */
+  border-color: #f2d5ce;
+  font-weight: bold;
+}

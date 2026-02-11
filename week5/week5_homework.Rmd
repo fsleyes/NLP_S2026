@@ -1,0 +1,417 @@
+---
+title: "Week 5 Homework"
+author: "Shawn Wang"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 1
+    css: "../stylesTemplates/sw_1_professional.css"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "../docs")
+  })
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", 
+           "RCurl", "psych", "knitr", 
+           "RColorBrewer", 'dplyr', "tidytext",
+           "tm", "stringi", "textstem", "psych", "ggdist", 
+           "viridis", "zoo", "Hmisc", "reshape", "plotly",
+           install=T)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', 'quanteda', 'readtext', install=T)
+
+
+library("quanteda.textplots")
+library(quanteda.textstats)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+```
+
+
+
+# Jamie cleaning genie
+```{r}
+jamie_genie <- function(dat, wordcol, omit_stops = TRUE, lemmatize = TRUE) {
+  # Input validation
+  if (!wordcol %in% names(dat)) {
+    stop(paste("Column", wordcol, "not found in dataframe"))
+  }
+
+#load stopword and replacement lists from github  
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
+
+
+ # Create working copy and perform initial split
+  dat_prep <- dat %>%
+    dplyr::mutate(
+      id_row_orig = factor(seq_len(nrow(dat))),
+      text_initialsplit = tryCatch(
+        stringi::stri_enc_toutf8(as.character(.[[wordcol]]),
+                                 is_unknown_8bit = TRUE,
+                                 validate = TRUE),
+        error = function(e) stringi::stri_encode(as.character(.[[wordcol]]), to = "UTF-8")
+      ) %>%
+        tolower()
+    )
+
+  # Standardize apostrophes in original text
+  dat_prep <- dat_prep %>%
+    dplyr::mutate(
+      text_initialsplit = ifelse(
+        is.na(text_initialsplit),
+        NA_character_,
+        stringi::stri_replace_all_regex(
+          text_initialsplit,
+          "[\u2018\u2019\u02BC\u201B\uFF07\u0092\u0091\u0060\u00B4\u2032\u2035]",
+          "'"
+        )
+      )
+    )
+
+  # Perform initial split into words (retains contractions)
+  dat_prep <- dat_prep %>%
+    tidyr::separate_rows(text_initialsplit, sep = "[[:space:]]+") %>%
+    dplyr::mutate(
+      text_initialsplit = ifelse(
+        is.na(text_initialsplit) | stringi::stri_isempty(text_initialsplit),
+        NA_character_,
+        text_initialsplit
+      )
+    ) %>%
+    # Remove original column
+    dplyr::select(-all_of(wordcol))
+
+  # Initialize cleaning column with actual cleaned text
+  dat_prep <- dat_prep %>%
+    dplyr::mutate(
+      word_clean = text_initialsplit,
+      # Remove non-alphabetic characters except apostrophes
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-zA-Z']", " ")
+      ),
+      # Squish whitespace
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringr::str_squish(word_clean)
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-z']", "")
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^[:alnum:]']", "")
+      )
+    )
+
+  # Apply contractions replacement (only for non-NA values)
+  dat_prep <- replacements_25(dat = dat_prep, wordcol = word_clean)
+
+  # Perform additional splitting after replacements (keeping NAs)
+  dat_prep <- dat_prep %>%
+    tidyr::separate_rows(word_clean, sep = "[[:space:]]+", convert = TRUE) %>%
+    dplyr::mutate(
+      word_clean = ifelse(
+        is.na(word_clean) | stringi::stri_isempty(word_clean),
+        NA_character_,
+        word_clean
+      ),
+      id_row_postsplit = seq_len(dplyr::n())  # Fixed this line
+    )
+
+  # Lemmatization if requested (only for non-NA values)
+  if (lemmatize) {
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        word_clean = ifelse(
+          is.na(word_clean),
+          NA_character_,
+          textstem::lemmatize_strings(word_clean)
+        )
+      )
+  }
+
+  # Stopword removal if requested (now keeps NAs)
+  if (omit_stops) {
+    stopwords <- tolower(Temple_stops25$word)
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        is_stopword = ifelse(
+          is.na(word_clean),
+          NA,
+          word_clean %in% stopwords
+        ),
+        word_clean = ifelse(is_stopword, NA_character_, word_clean)
+      ) %>%
+      dplyr::select(-is_stopword)  # Remove the is_stopword column
+  }
+
+  return(dat_prep)
+}
+
+```
+
+
+
+
+# Shawn Cleaning Genie (and related functions)
+
+
+```{r}
+
+keep_alphab <- function(x) {
+  
+  #uses regex to remove any numbers from a string
+  x_clean <- x %>%
+    mutate(string = gsub(pattern = "[^a-zA-Z]", replacement = " ", string))
+    
+    
+  
+  return(x_clean)
+  
+}
+
+
+#takes a string returns a data frame
+split_string <- function(x) {
+  
+  #convert to a data frame first
+  cleaned_x <- data.frame(string = x) %>%
+    separate_longer_delim(string, delim = " ") %>% #pivots to long format based on delimeter of space
+    filter(string != "") #filters so that empty rows are deleted
+  return(cleaned_x)
+  
+}
+
+
+#x is a character object (string), NOT a data frame
+shawn_genie <- function(x) {
+  
+  
+  #start as character object
+  x <- tolower(x) #convert to lowercase
+  x <- stripWhitespace(x) #strip whitespace
+  x <- stri_remove_empty(x) #removes empty strings
+  x <- gsub("\\b[a-zA-Z]\\b{1}", " ", x) # omits singletons including Aa and Ii
+  x <- split_string(x) #pivots to one word per row
+  
+  
+  load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
+  
+  #load in the list of contractions that we want to replace
+  contractions_list <- replacements_25$word
+  
+  
+  x <- x %>%
+    mutate(new_words = case_when( #create new variable called new_words that will have the replaced words
+      is.na(string) ~ NA, #if empty then do nothing
+      string %in% contractions_list ~ replacements_25$replacement[match(string, replacements_25$word)], #if word is a contraction, replace it with the expanded version
+      TRUE ~ string), #if it's none of those options, just keep the original
+      check = ifelse(is.na(string), NA, string %in% contractions_list), #this is for debugging
+      string = new_words #reassign to the string name
+    ) %>%
+    select(string) #delete the intermediate variables
+  x <- keep_alphab(x) #remove all special characters
+
+  x$string <- lemmatize_strings(x$string) #lemmatize the words, remove affixes etc
+  
+  
+  load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
+  
+  #load in list of stopwords to remove
+  stopwords <- tolower(Temple_stops25$word)
+  x <- x %>%
+    mutate(
+      is_stopword = ifelse( #create new variable identifying which words are stopwords
+        is.na(string), NA, #if empty do nothing
+        string %in% stopwords) #if not empty then TRUE if stopword, FALSE if not stopword
+      ) %>%
+    filter(is_stopword == FALSE) %>% #keep only the words that are NOT stopwords
+    select(string) #delete intermediate variables
+
+  
+  x$string <- gsub(x = x$string, pattern = "\\d+", replacement = " ") #remove numbers
+  
+  
+  
+  x <- split_string(x) #this last step removes all other whitespace and just cleans up in general
+  
+  return(x)
+  
+}
+
+```
+
+
+
+
+Homework: 
+
+- Clean up CSS and make it a professional format
+- Run cleaning genie on unabomber
+- Merge with lookup
+- Pick 5 indices and merge
+- Generate descriptive statistics
+- Generate some plots of these sentiments
+
+
+
+# Load in text, run cleaning genie
+
+We're going to start by reading in the data from GitHub and then running our custom cleaning genie that will get the data frame into a format ready for analysis, with one lemmatized word per row. 
+```{r}
+
+#load in text as a single character vector
+unabomb_raw <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+
+
+#run the cleaning genie
+unabomb_clean <- shawn_genie(unabomb_raw)
+
+```
+
+
+
+
+# Merge with lookup
+
+In order to enable analysis of sentiment within the unabomber manifesto, I'm doing to merge it with a database of word/sentiment associations. Then, I'm going to select 5 sentiment variables that I'm interested in analyzing within the manifesto: arousal, intensity, trust, valence, and age of acquisition as a proxy of lexical complexity.
+```{r}
+
+#load in database from online
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+
+#cut the database to the variables that we're interested in
+lookup_small <- lookup_Jul25 %>% select(word, emo_arousal_b24, emo_intensity, emo_trust, emo_valence_b24, lex_AoA)
+
+df_prep <- unabomb_clean %>% left_join(lookup_small, by = c("string" = "word")) 
+```
+
+
+
+# Descriptive Statistics
+
+We can generate some descriptive statistics by using describe() from the psych package.
+```{r}
+df_prep %>%
+  select(-string) %>%
+  psych::describe() %>%
+  select(mean, sd, median)
+  
+```
+
+
+
+# Some plots
+
+Similarly, and perhaps more helpfully, we can display these data visually:
+
+
+## Histogram of emotional arousal
+
+Here we can see that most of the words are relatively low in arousal (blue) but there text skews positively towards some high arousal words (red).
+```{r}
+df_prep %>%
+  ggplot(aes(x = emo_arousal_b24, fill = after_stat(x))) +
+  geom_histogram(color = "white") +
+  scale_fill_gradient(low = "#3498db", high = "#e74c3c") + 
+  theme_classic()
+```
+
+
+
+
+## Intensity ratings across the corpus
+
+We can see from this figure that the manifesto keeps up a generally consistent intensity over the length of the document.
+```{r}
+df_prep %>% mutate(smooth_intensity = zoo::rollmean(emo_intensity, k = 5, fill = NA),
+                             word_num = row_number()) %>%
+  ggplot(mapping = aes(x = word_num, y = smooth_intensity)) +
+  geom_col(position = "dodge") +
+  theme_classic()
+```
+
+
+
+
+## Correlation plot across all 5 variables
+
+We can take a look at how these variables are related to each other through a heatmap:
+
+```{r}
+cor_df <- df_prep %>%
+  select(-string)
+
+get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+}
+
+cormat <- rcorr(as.matrix(cor_df))
+cormat_r <- cormat$r
+cormat_r_upper <- get_upper_tri(cormat_r)
+cormat_r_melt <- melt(cormat_r_upper, na.rm = TRUE)
+names(cormat_r_melt)[3] <- "correlation"
+
+
+cormat_r_melt %>%
+  ggplot(mapping = aes(x = X1, y = X2, fill = correlation)) +
+  geom_tile(color = "black") + 
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+   midpoint = 0, limit = c(-1, 1), space = "Lab", 
+   name="Correlation") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 5, hjust = 1),
+    axis.text.y = element_text(size = 5))+
+ coord_fixed()
+
+```
+From our correlation heatmap we can see that trust and valence seem to be generally negatively correlated with arousal, whereas intensity and age of acquisition seem to be positively correlated with arousal. Valence and trust also appear to be positively correlated.
+
+
+
+# Line graphs
+
+Finally, we can track the levels of lexical complexity as measured by age of acquisition through some longitudinal line graphs:
+
+```{r}
+df_prep %>%
+  mutate(word_num = row_number()) %>%
+  ggplot(mapping = aes(x = word_num, y = lex_AoA)) +
+  geom_smooth(se = FALSE, 
+              aes(color = after_stat(y))) +
+  scale_color_gradient(low = "blue", high = "red") + 
+  theme_classic()
+```
+What we might glean from this graph is that the manifesto begins with words of high lexical complexity which quickly decreases, but has two other peaks throughout the manifesto. Of note, the range of the lexical complexity is around 7.0 to 7.5, meaning the manifesto as a whole maintains a high level of lexical complexity throughout, and these fluctuations are relatively minor when considering the level of the document as a whole. 
