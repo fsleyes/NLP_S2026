@@ -156,6 +156,7 @@ Homework:
 
 
 
+
 # Load in text, run cleaning genie
 
 We're going to start by reading in the data from GitHub and then running our custom cleaning genie that will get the data frame into a format ready for analysis, with one lemmatized word per row. 
@@ -176,7 +177,7 @@ unabomb_clean <- shawn_genie(unabomb_raw)
 
 # Merge with lookup
 
-In order to enable analysis of sentiment within the unabomber manifesto, I'm doing to merge it with a database of word/sentiment associations. Then, I'm going to select 5 sentiment variables that I'm interested in analyzing within the manifesto: arousal, intensity, trust, valence, and age of acquisition as a proxy of lexical complexity.
+In order to enable analysis of sentiment within the unabomber manifesto, I'm doing to merge it with a database of word/sentiment associations. Then, I'm going to select 5 sentiment variables that I'm interested in analyzing within the manifesto: arousal, intensity, trust, valence, and age of acquisition as a proxy of lexical complexity. I hypothesize that we will see relatively high arousal, intensity, negative valence, and high age of acquisition (as he was highly educated), and low trust. 
 ```{r}
 
 #load in database from online
@@ -200,6 +201,8 @@ df_prep %>%
   select(mean, sd, median, skew)
   
 ```
+
+
 
 <br>
 <br>
