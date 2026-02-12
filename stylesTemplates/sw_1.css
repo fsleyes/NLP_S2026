@@ -1,8 +1,9 @@
 /* Whole document: */
 body{
-  font-family: "Helvetica";
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 13pt;
   background-color: #f9f9f9;
+  color: #333333;
   margin: 0 auto;
   max-width: 100%;
 }
@@ -18,8 +19,8 @@ body{
 
 /* Headers */
 
-h1.title {color: black;
-  font-size: 16pt;
+h1.title {color: #1b263b;
+  font-size: 22pt;
   padding-top: 1em;
   padding-bottom: .2em;
   padding-right: .2em;
@@ -43,8 +44,8 @@ h1, .h1, h2, .h2, h3, .h3 {
 h1 {
   font-size: 15pt;
   padding-top:.5em;
-  color: 	 black;
-  background-color: #f9f1f1;
+  color: #2f3e33;
+  background-color: #dde5de;
 }
 
 
@@ -52,22 +53,22 @@ h1 {
 h2 { 
   font-size: 15pt;
   padding-top:.5em;
-  color: black;  
-  background-color: #e6e2d8;
+  color: #1b263b;  
+  background-color: #d1d9e0;
 }
 
 
 h3 { 
   font-size: 15pt;
-   color: white;
-   background-color:  #81A88D70;
+  color: #3a606e;
+  background-color: rgba(221, 229, 222, 0.4);
 }
 
 
 /* Code Chunks */
 pre {
   max-height: 350px;
-  background-color: #81A88D20;
+  background-color: #f0f4f7;
   overflow-y: auto;
 }
 
@@ -77,6 +78,7 @@ pre[class] {
 
 .r code {
     white-space: pre;
+    color: #2f3e33;
 }
 
 pre code {
@@ -88,21 +90,21 @@ pre code {
 
 /* unvisited link */
 a:link {
-  color: #374AD5;
+  color: #3a606e;
   text-decoration: none;
 }
 
 
 /* visited link */
 a:visited {
-  color: #4B0082;
+  color: #5a7d8c;
   text-decoration: none;
 }
 
 /* mouse over link */
 a:hover { 
-  color: #4B0082;
-  background-color: #E4ECE7;
+  color: #1b263b;
+  background-color: #e4ece7;
   text-decoration: none;
 }
 

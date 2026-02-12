@@ -1,0 +1,237 @@
+---
+title: "Database Joins & Sentiment Analysis"
+author: "Jamie Reilly, Ph.D."
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(fig.width=6, fig.height=4, fig.align = 'center', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'quanteda', 'tidyr', 'textstem', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 11) %>%
+   row_spec(0, color = "yellow", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "300px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+#read csv data file from github
+#step1 <- "https://github.com/Reilly-ConceptsCognitionLab/sandbox_scrapfiles/raw/main/fakedat.csv"
+#step2 <- read.csv(step1, header=T)
+#read string data using 'here' from a local directory
+#to_R <- readLines(here("data", "MyRaw.txt")) ---- using 'here' to read in data
+#to_format <- paste(to_R, collapse=" ")
+#textfromgittoR <- paste(readLines("https://github.com/reilly-lab/TempleTextMine2020/raw/master/unabomber_manifesto.txt"), collapse = " ")  #from github
+```
+
+# Demo Text
+Here's a sample text string we will work from. This has no missing values and no punctuation. 
+```{r}
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/sample_text_join.rda?raw=true"))
+my_join <- sample_text_join
+print(my_join)
+
+#split and unlist on doc_text dat, textcol
+my_join_tidy <- tidyr::separate_rows(my_join, doc_text, sep=" ") 
+print(my_join_tidy)
+
+#lemmatize strings in doc_text write new column of lemmatized strings
+test <- my_join_tidy %>% mutate(doc_lemmatized = lemmatize_strings(doc_text))
+
+print(test)
+
+```
+
+# Where to find lookup databases?
+https://www.reilly-coglab.com/data
+
+
+# Load BIG lookup database
+Your lookup database contains values or 'metadata' for many words.  I have combined many published lexical databases into a single lexical lookup database that you can use for sentiment, etc.  Let's load that in from Github and inspect it
+```{r}
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+lookup_db <- lookup_Jul25
+colnames(lookup_db)
+str(lookup_db)
+```
+
+
+# Let's choose five variables
+We can do some basic sentiment analysis or any other variable in the lookup database
+```{r}
+lookup_small <- lookup_db %>% select(1, 2, 24, 27, 28)
+str(lookup_small)
+```
+
+# Join lookup data to target text by row
+```{r}
+df_prep <- test %>% dplyr::left_join(lookup_small, by = c("doc_lemmatized" = "word")) 
+print(df_prep)
+```
+
+
+
+# Now do it on unambomber and visualize the results
+# Import Unabomber
+```{r, eval=T}
+#Import and inspect the raw unabomber manifesto, inspect
+unabomb <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+
+#Print first few lines of unabomber manifesto
+cat(unabomb[1:50], sep = "\n")
+str(unabomb)
+```
+
+
+# Jamie cleaning genie
+Here's a cleaning genie that should catch many of the errors and stray dogs that your original cleaning genies missed.
+```{r, eval=F}
+jamie_genie <- function(dat, wordcol, omit_stops = TRUE, lemmatize = TRUE) {
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(stringi)
+  
+  # Input validation
+  #need to tell R what column in your dataframe is the text in quotes 'wordcol', this error message checks
+  if (!wordcol %in% names(dat)) {
+    stop(paste("Column", wordcol, "not found in dataframe"))
+  }
+
+#load stopword and replacement lists from github  
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
+
+
+# Create working copy and perform initial split, standardizes text encoding so all characters are UTF8, adds an id variable
+# transform all text to lower
+  dat_prep <- dat %>% dplyr::mutate(id_row_orig = factor(seq_len(nrow(dat))),
+      text_initialsplit = tryCatch(stringi::stri_enc_toutf8(as.character(.[[wordcol]]),
+                                 is_unknown_8bit = TRUE,
+                                 validate = TRUE), error = function(e) stringi::stri_encode(as.character(.[[wordcol]]), to = "UTF-8")
+      ) %>% tolower())
+
+  # Standardize apostrophes in original text
+  dat_prep <- dat_prep %>% dplyr::mutate(text_initialsplit = ifelse(
+        is.na(text_initialsplit), NA_character_, stringi::stri_replace_all_regex(
+          text_initialsplit,
+          "[\u2018\u2019\u02BC\u201B\uFF07\u0092\u0091\u0060\u00B4\u2032\u2035]",
+          "'"
+        )
+      )
+    )
+
+  # Perform initial split into words (retains contractions)
+  dat_prep <- dat_prep %>% tidyr::separate_rows(text_initialsplit, sep = "[[:space:]]+") %>%
+    dplyr::mutate(
+      text_initialsplit = ifelse(
+        is.na(text_initialsplit) | stringi::stri_isempty(text_initialsplit),
+        NA_character_,
+        text_initialsplit
+      )
+    ) %>%
+    # Remove original column
+    dplyr::select(-all_of(wordcol))
+
+  # Initialize cleaning column with actual cleaned text
+  dat_prep <- dat_prep %>%
+    dplyr::mutate(
+      word_clean = text_initialsplit,
+      # Remove non-alphabetic characters except apostrophes
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-zA-Z']", " ")
+      ),
+      # Squish whitespace
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringr::str_squish(word_clean)
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-z']", "")
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^[:alnum:]']", "")
+      )
+    )
+
+  # Apply contractions replacement (only for non-NA values)
+  dat_prep <- replacements_25(dat = dat_prep, wordcol = word_clean)
+
+  # Perform additional splitting after replacements (keeping NAs)
+  dat_prep <- dat_prep %>%
+    tidyr::separate_rows(word_clean, sep = "[[:space:]]+", convert = TRUE) %>%
+    dplyr::mutate(
+      word_clean = ifelse(
+        is.na(word_clean) | stringi::stri_isempty(word_clean),
+        NA_character_,
+        word_clean
+      ),
+      id_row_postsplit = seq_len(dplyr::n())  # Fixed this line
+    )
+
+  # Lemmatization if requested (only for non-NA values)
+  if (lemmatize) {
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        word_clean = ifelse(
+          is.na(word_clean),
+          NA_character_,
+          textstem::lemmatize_strings(word_clean)
+        )
+      )
+  }
+
+  # Stopword removal if requested (now keeps NAs)
+  if (omit_stops) {
+    stopwords <- tolower(Temple_stops25$word)
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        is_stopword = ifelse(
+          is.na(word_clean),
+          NA,
+          word_clean %in% stopwords
+        ),
+        word_clean = ifelse(is_stopword, NA_character_, word_clean)
+      ) %>%
+      dplyr::select(-is_stopword)  # Remove the is_stopword column
+  }
+
+  return(dat_prep)
+}
+
+```
+
+# Test clean fn
+```{r, eval=F}
+mycleandat <- clean_genie(unabomb)
+print(mycleandat) 
+```
+
+
+
+## Archive
+```{r, eval=F}
+#read from my computer, save as rda then post on github public repo
+sample_text_join <- read.csv("utilities/sample_join.csv")
+save(sample_text_join, file="utilities/sample_text_join.rda")
+```

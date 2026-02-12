@@ -2,12 +2,15 @@
 title: "NLP CHEATSHEET"
 author: "Shawn Wang"
 date: "`r Sys.Date()`"
-output: 
+output:
   html_document:
     toc: true
     toc_float: true
     toc_depth: 1
-    css: !expr here::here("./stylesTemplates/sw_1.css")
+    css: "stylesTemplates/sw_1_professional.css"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "docs")
+  })
 ---
 
 ```{r setup, include=FALSE}
@@ -17,7 +20,8 @@ library(xfun)
 pkg_attach("tidyverse", "here", "kableExtra", 
            "RCurl", "psych", "knitr", 
            "RColorBrewer", 'dplyr', "tidytext",
-           "tm", "stringi", "textstem",
+           "tm", "stringi", "textstem", "psych", "ggdist", 
+           "viridis", "zoo",  "plotly",
            install=T)
 pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', 'quanteda', 'readtext', install=T)
 library("quanteda.textplots")
@@ -45,11 +49,17 @@ registerS3method("knit_print", "data.frame", print.me)
 
 library(tidytext)
 
+
+#unabomber text as example
+unabomb_raw <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
+
 ```
 
 
-# FUNCTIONS
 
+
+
+# DATA WRANGLING
 
 
 ## Functions to add numbers
@@ -63,6 +73,9 @@ add_func <- function(x, y) {
   return(sum)
 }
 
+
+#EXAMPLE: 3 + 4
+add_func(3, 4)
 
 
 ```
@@ -84,9 +97,18 @@ mean_func <- function(x, y) {
 }
 
 
+#EXAMPLE: average of 3 and 4
+
+mean_func(3, 4)
+
 ```
 
 <br>
+
+
+
+
+# TEXT CLEANING
 
 ## Function to remove any word from a string
 ```{r}
@@ -106,6 +128,11 @@ replace_func <- function(string, old_Word, replacement_Word) {
 }
 
 
+#EXAMPLE: removing "little" from mary had a little lamb:
+test_string <- "mary had a little lamb"
+replace_func(string = test_string, old_Word = "little", replacement_Word = "")
+
+
 ```
 <br>
 
@@ -116,14 +143,19 @@ replace_func <- function(string, old_Word, replacement_Word) {
 remove_special_func <- function(myString) {
   
 
-  #replaces punctuation and special characters with blanks
-  x_clean <- gsub("[[:punct:]]", " ", myString)
+  #replaces punctuation and special characters
+  x_clean <- gsub("[[:punct:]]", "", myString)
 
   
   return(x_clean)
   
   
 }
+
+
+#EXAMPLE: removing punctuation marks from messy string:
+test_string <- "ma';ry had$ #@a litt#%le lam%^b"
+remove_special_func(test_string)
 
 
 ```
@@ -144,24 +176,15 @@ split_string <- function(x) {
 }
 
 
+#EXAMPLE: splitting and unlisting "mary had a little lamb"
+test_string <- "mary had a little lamb"
+split_string(test_string)
+
+
 
 ```
 
-<br>
 
-## Function to remove "the"
-```{r}
-
-
-remove_the <- function(x) {
-  
-  #replaces "the" with blank
-  x_clean <- x %>%
-    gsub(pattern = "the", replacement = "", ignore.case = TRUE)
-  return(x_clean)
-}
-
-```
 
 
 <br>
@@ -175,10 +198,15 @@ remove_numbers <- function(x) {
   
   #uses regex to remove any numbers from a string
   x_clean <- x %>%
-    gsub(pattern = "\\d+", replacement = " ")
+    gsub(pattern = "\\d+", replacement = "")
   return(x_clean)
   
 }
+
+
+#EXAMPLE: removing numbers from messy string
+test_string <- "mar56854864y h56ad3412 a346 li346tt34634le lam346b"
+remove_numbers(test_string)
 
 ```
 
@@ -190,81 +218,40 @@ keep_alphab <- function(x) {
   
   #uses regex to remove any numbers from a string
   x_clean <- x %>%
-    mutate(string = gsub(pattern = "[^a-zA-Z]", replacement = " ", string))
+    mutate(string = gsub(pattern = "[^a-zA-Z]", replacement = "", string))
     
     
   
   return(x_clean)
   
 }
+
+
+#EXAMPLE: removing all these from messy string as a split and unlisted data frame
+test_string <- "ma245ry[][]][] ha]][d a 78990lit35567%#$tl87e[][] lam36;;'[][537b"
+test_string_split <- split_string(test_string)
+keep_alphab(test_string_split)
 ```
 
 
 
 <br>
 
-## Function to clean built from other functions
 
-```{r}
-
-#takes a string, returns a tidy data frame with one word per row
-#x is the data frame
-#words is a list of words that we want to remove as a vector
-clean_string <- function(x, words) {
-  
-
-  
-  #keep only alphabetic characters
-  #remove non-alphabetic characters, numbers, punctuation
-  x <- keep_alphab(x)
-  
-  
-  
-  #remove words that we don't want by sequencing along a list of words that we don't want in a loop
-  for (i in seq_along(words)) {
-    
-    x <- replace_func(string = x, old_Word = words[i], replacement_Word = "")
-    
-  }
-  
-  x <- gsub("\\b[a-zA-Z]\\b{1}", " ", x) #omits singletons including Aa and Ii
-  
-  x <- tolower(x)
-  
-  
-  #splits character object to data frame, one word per row
-  x <- split_string(x)
-  
-  
-  
-  #lemmatize string
-  
-  return(x)
-  
-}
-
-
-
-```
 
 
 
 
 <br>
 
-## New full cleaning function
+## Full cleaning genie
 
-
+Note: This requires previous functions keep_alphab() and split_string()
 ```{r}
-
-
-#load in the datasets that are needed to remove stopwords and 
-load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/replacements_25.rda"))
-load(url("https://github.com/fsleyes/NLP_S2026/raw/refs/heads/main/week3/utils/MIT_stops.rda"))
 
 
 #x is a character object (string), NOT a data frame
-shawn_Cleaning_Genie <- function(x) {
+shawn_genie <- function(x) {
   
   
   #start as character object
@@ -274,6 +261,8 @@ shawn_Cleaning_Genie <- function(x) {
   x <- gsub("\\b[a-zA-Z]\\b{1}", " ", x) # omits singletons including Aa and Ii
   x <- split_string(x) #pivots to one word per row
   
+  
+  load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
   
   #load in the list of contractions that we want to replace
   contractions_list <- replacements_25$word
@@ -293,9 +282,10 @@ shawn_Cleaning_Genie <- function(x) {
   x$string <- lemmatize_strings(x$string) #lemmatize the words, remove affixes etc
   
   
+  load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
   
   #load in list of stopwords to remove
-  stopwords <- tolower(MIT_stops$word)
+  stopwords <- tolower(Temple_stops25$word)
   x <- x %>%
     mutate(
       is_stopword = ifelse( #create new variable identifying which words are stopwords
@@ -317,66 +307,68 @@ shawn_Cleaning_Genie <- function(x) {
 }
 
 
+
+# EXAMPLE:
+
+
+#run cleaning genie
+unabomb_clean_df <- shawn_genie(unabomb_raw) %>%
+  dplyr::summarize(author = "TK",
+            doc_text = paste(string, collapse = " "))
+
+unabomb_clean <- shawn_genie(unabomb_raw)
+
+
+
+
+
 ```
 
 
 
+## Convert into corpus, tokenize, and turn into document feature matrix
 
 
 
-
-<br>
-<br>
-<br>
-<br>
-
-
-
-
-# EXAMPLES
-
-
-## Cleaning the Unabomber Manifesto
-
-Loading in the data, applying the cleaning function, and converting to corpus/document feature matrix:
 ```{r}
-
-#load in text as a single character vector
-unabomb_raw <- paste(readLines('https://raw.githubusercontent.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/main/unabomber_manifesto.txt'))
-
-
-
-
-
-
-#run cleaning genie
-unabomb_clean_df <- shawn_Cleaning_Genie(unabomb_raw) %>%
-  summarize(author = "TK",
-            doc_text = paste(string, collapse = " "))
-
+#corpus() is used to turn a text data frame with one row per document, columns for metadata then one column for text
 unabomb_corpus <- corpus(unabomb_clean_df, 
                          doc_id_field = "author",
                          text_field = "doc_text")
 
+#tokenize
 tokens_unabomb <- tokens(unabomb_corpus)
+
+#turn the tokenized object into document feature matrix
 dfm_unabomb <- dfm(tokens_unabomb)
 
 names(unabomb_corpus) <- "Unabomber Manifesto"
+
 ```
 
+
+
+
+
 <br>
+<br>
+
+# CORPUS STATISTICS
+
 
 ## Getting some basic off-the-shelf statistics about your corpus
 
 dfm_unabomb has to be a document frame matrix type object here:
 ```{r}
-#lexical diversity
-
+#lexical diversity, these are all different measures
 print(textstat_lexdiv(dfm_unabomb, measure = c("TTR", "C", "R", "CTTR", "U", "S", "K", "I", "D", "Vm", "Maas"), log.base = 10))
 
 ```
 
+
+
 <br>
+
 
 ## Table of lexical characteristcs pre/post
 
@@ -395,17 +387,66 @@ unabomb_raw_corpus <- corpus(unabomb_raw_df, doc_id_field = "author", text_field
 summary(unabomb_raw_corpus) #take a look at type and tokens
 ```
 
+<br>
+
+
+## Document Feature Matrix
+
+You can also find the document feature matrix using topfeatures where you give it how many words you want:
+```{r}
+
+
+#print top 20 words
+topfeatures(dfm_unabomb, 20)
+```
 
 
 <br>
+
+
+# SENTIMENT ANALYSIS
+
+
+## Merge with lookup tables:
+
+We merge with a lookup table to assign indices to each word that exists in our corpus.
+```{r}
+
+#load in database from online
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+
+#cut the database to the variables that we're interested in
+lookup_small <- lookup_Jul25 %>% select(word, emo_arousal_b24, emo_intensity, emo_trust, emo_valence_b24, lex_AoA)
+
+df_prep <- unabomb_clean %>% left_join(lookup_small, by = c("string" = "word")) 
+```
+
+
+## Descriptive statistics of sentiment indices
+
+describe() from psych package is an easy way of getting basic descriptive statistics from columns extracted from databases.
+```{r}
+df_prep %>%
+  select(-string) %>%
+  psych::describe() %>%
+  select(mean, sd, median)
+  
+```
+
+
+
+
+
+
+# CORPUS PLOTS
+
+
 
 ## Lexical Dispersion Plot
 
 
 Pick the words that you want to display on your dispersion plot:
 ```{r}
-
-
 
 textplot_xray(
     kwic(tokens(unabomb_corpus), pattern = "capitalism"),
@@ -417,6 +458,7 @@ textplot_xray(
 )
 ```
 
+
 <br>
 
 ## Word Cloud
@@ -427,15 +469,91 @@ quanteda.textplots::textplot_wordcloud(dfm_unabomb, random_order = FALSE, rotati
 ```
 
 
+<br>
+
+
+
+## Histograms
+
+Graphical display of a specific variable of interest in terms of its representation in the corpus, as a histogram.
+```{r}
+df_prep %>%
+  ggplot(aes(x = emo_arousal_b24, fill = after_stat(x))) +
+  geom_histogram(color = "white") +
+  scale_fill_gradient(low = "#3498db", high = "#e74c3c") + 
+  theme_classic()
+```
+
 
 <br>
 
-## Document Feature Matrix
 
-You can also find the document feature matrix using topfeatures where you give it how many words you want:
+## Intensity ratings across the corpus
+
+Tracking a variable of interest over the span of the corpus.
 ```{r}
+df_prep %>% mutate(smooth_intensity = zoo::rollmean(emo_intensity, k = 5, fill = NA),
+                             word_num = row_number()) %>%
+  ggplot(mapping = aes(x = word_num, y = smooth_intensity)) +
+  geom_col(position = "dodge") +
+  theme_classic()
+```
 
 
-#print top 20 words
-topfeatures(dfm_unabomb, 20)
+<br>
+
+
+## Correlation plot
+
+Correlation plots can show general trends of relationships between variables:
+
+```{r}
+library(Hmisc)
+library(reshape)
+
+cor_df <- df_prep %>%
+  select(-string)
+
+get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+}
+
+cormat <- rcorr(as.matrix(cor_df))
+cormat_r <- cormat$r
+cormat_r_upper <- get_upper_tri(cormat_r)
+cormat_r_melt <- melt(cormat_r_upper, na.rm = TRUE)
+names(cormat_r_melt)[3] <- "correlation"
+
+
+cormat_r_melt %>%
+  ggplot(mapping = aes(x = X1, y = X2, fill = correlation)) +
+  geom_tile(color = "black") + 
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+   midpoint = 0, limit = c(-1, 1), space = "Lab", 
+   name="Correlation") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 5, hjust = 1),
+    axis.text.y = element_text(size = 5))+
+ coord_fixed()
+
+```
+
+
+<br>
+
+
+## Line graphs
+
+These  line graphs track a variable of interest over the course of the corpus in a linear representation.
+
+```{r}
+df_prep %>%
+  mutate(word_num = row_number()) %>%
+  ggplot(mapping = aes(x = word_num, y = lex_AoA)) +
+  geom_smooth(se = FALSE, 
+              aes(color = after_stat(y))) +
+  scale_color_gradient(low = "blue", high = "red") + 
+  theme_classic()
 ```

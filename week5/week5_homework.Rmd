@@ -52,135 +52,6 @@ registerS3method("knit_print", "data.frame", print.me)
 
 
 
-# Jamie cleaning genie
-```{r}
-jamie_genie <- function(dat, wordcol, omit_stops = TRUE, lemmatize = TRUE) {
-  # Input validation
-  if (!wordcol %in% names(dat)) {
-    stop(paste("Column", wordcol, "not found in dataframe"))
-  }
-
-#load stopword and replacement lists from github  
-load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
-load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
-
-
- # Create working copy and perform initial split
-  dat_prep <- dat %>%
-    dplyr::mutate(
-      id_row_orig = factor(seq_len(nrow(dat))),
-      text_initialsplit = tryCatch(
-        stringi::stri_enc_toutf8(as.character(.[[wordcol]]),
-                                 is_unknown_8bit = TRUE,
-                                 validate = TRUE),
-        error = function(e) stringi::stri_encode(as.character(.[[wordcol]]), to = "UTF-8")
-      ) %>%
-        tolower()
-    )
-
-  # Standardize apostrophes in original text
-  dat_prep <- dat_prep %>%
-    dplyr::mutate(
-      text_initialsplit = ifelse(
-        is.na(text_initialsplit),
-        NA_character_,
-        stringi::stri_replace_all_regex(
-          text_initialsplit,
-          "[\u2018\u2019\u02BC\u201B\uFF07\u0092\u0091\u0060\u00B4\u2032\u2035]",
-          "'"
-        )
-      )
-    )
-
-  # Perform initial split into words (retains contractions)
-  dat_prep <- dat_prep %>%
-    tidyr::separate_rows(text_initialsplit, sep = "[[:space:]]+") %>%
-    dplyr::mutate(
-      text_initialsplit = ifelse(
-        is.na(text_initialsplit) | stringi::stri_isempty(text_initialsplit),
-        NA_character_,
-        text_initialsplit
-      )
-    ) %>%
-    # Remove original column
-    dplyr::select(-all_of(wordcol))
-
-  # Initialize cleaning column with actual cleaned text
-  dat_prep <- dat_prep %>%
-    dplyr::mutate(
-      word_clean = text_initialsplit,
-      # Remove non-alphabetic characters except apostrophes
-      word_clean = ifelse(
-        is.na(word_clean),
-        NA_character_,
-        stringi::stri_replace_all_regex(word_clean, "[^a-zA-Z']", " ")
-      ),
-      # Squish whitespace
-      word_clean = ifelse(
-        is.na(word_clean),
-        NA_character_,
-        stringr::str_squish(word_clean)
-      ),
-      word_clean = ifelse(
-        is.na(word_clean),
-        NA_character_,
-        stringi::stri_replace_all_regex(word_clean, "[^a-z']", "")
-      ),
-      word_clean = ifelse(
-        is.na(word_clean),
-        NA_character_,
-        stringi::stri_replace_all_regex(word_clean, "[^[:alnum:]']", "")
-      )
-    )
-
-  # Apply contractions replacement (only for non-NA values)
-  dat_prep <- replacements_25(dat = dat_prep, wordcol = word_clean)
-
-  # Perform additional splitting after replacements (keeping NAs)
-  dat_prep <- dat_prep %>%
-    tidyr::separate_rows(word_clean, sep = "[[:space:]]+", convert = TRUE) %>%
-    dplyr::mutate(
-      word_clean = ifelse(
-        is.na(word_clean) | stringi::stri_isempty(word_clean),
-        NA_character_,
-        word_clean
-      ),
-      id_row_postsplit = seq_len(dplyr::n())  # Fixed this line
-    )
-
-  # Lemmatization if requested (only for non-NA values)
-  if (lemmatize) {
-    dat_prep <- dat_prep %>%
-      dplyr::mutate(
-        word_clean = ifelse(
-          is.na(word_clean),
-          NA_character_,
-          textstem::lemmatize_strings(word_clean)
-        )
-      )
-  }
-
-  # Stopword removal if requested (now keeps NAs)
-  if (omit_stops) {
-    stopwords <- tolower(Temple_stops25$word)
-    dat_prep <- dat_prep %>%
-      dplyr::mutate(
-        is_stopword = ifelse(
-          is.na(word_clean),
-          NA,
-          word_clean %in% stopwords
-        ),
-        word_clean = ifelse(is_stopword, NA_character_, word_clean)
-      ) %>%
-      dplyr::select(-is_stopword)  # Remove the is_stopword column
-  }
-
-  return(dat_prep)
-}
-
-```
-
-
 
 
 # Shawn Cleaning Genie (and related functions)
@@ -296,10 +167,11 @@ unabomb_raw <- paste(readLines('https://raw.githubusercontent.com/Reilly-Concept
 
 #run the cleaning genie
 unabomb_clean <- shawn_genie(unabomb_raw)
+#test <- jamie_genie(unabomb_raw)
 
 ```
 
-
+<br>
 
 
 # Merge with lookup
@@ -316,7 +188,7 @@ lookup_small <- lookup_Jul25 %>% select(word, emo_arousal_b24, emo_intensity, em
 df_prep <- unabomb_clean %>% left_join(lookup_small, by = c("string" = "word")) 
 ```
 
-
+<br>
 
 # Descriptive Statistics
 
@@ -325,11 +197,13 @@ We can generate some descriptive statistics by using describe() from the psych p
 df_prep %>%
   select(-string) %>%
   psych::describe() %>%
-  select(mean, sd, median)
+  select(mean, sd, median, skew)
   
 ```
 
-
+<br>
+<br>
+<br>
 
 # Some plots
 
@@ -349,6 +223,7 @@ df_prep %>%
 
 
 
+<br>
 
 ## Intensity ratings across the corpus
 
@@ -362,7 +237,7 @@ df_prep %>% mutate(smooth_intensity = zoo::rollmean(emo_intensity, k = 5, fill =
 ```
 
 
-
+<br>
 
 ## Correlation plot across all 5 variables
 
@@ -399,7 +274,7 @@ cormat_r_melt %>%
 ```
 From our correlation heatmap we can see that trust and valence seem to be generally negatively correlated with arousal, whereas intensity and age of acquisition seem to be positively correlated with arousal. Valence and trust also appear to be positively correlated.
 
-
+<br>
 
 # Line graphs
 
