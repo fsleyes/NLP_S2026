@@ -177,7 +177,7 @@ unabomb_clean <- shawn_genie(unabomb_raw)
 
 # Merge with lookup
 
-In order to enable analysis of sentiment within the unabomber manifesto, I'm doing to merge it with a database of word/sentiment associations. Then, I'm going to select 5 sentiment variables that I'm interested in analyzing within the manifesto: arousal, intensity, trust, valence, and age of acquisition as a proxy of lexical complexity. I hypothesize that we will see relatively high arousal, intensity, negative valence, and high age of acquisition (as he was highly educated), and low trust. 
+In order to enable analysis of sentiment within the unabomber manifesto, I'm doing to merge it with a database of word/sentiment associations. Then, I'm going to select 5 sentiment variables that I'm interested in analyzing within the manifesto: arousal, intensity, trust, valence, and age of acquisition as a proxy of lexical complexity. I hypothesize that we will see relatively high arousal, intensity, negative valence, and high age of acquisition (as the author was highly educated), and low trust. 
 ```{r}
 
 #load in database from online
