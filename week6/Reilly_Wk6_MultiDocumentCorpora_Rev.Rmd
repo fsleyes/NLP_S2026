@@ -1,0 +1,263 @@
+---
+title: "Multidocument Corpora"
+author: "Jamie Reilly, Ph.D."
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(fig.width=6, fig.height=4, fig.align = 'center', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'quanteda', 'tidyr', 'textstem', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 11) %>%
+   row_spec(0, color = "yellow", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "300px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+#read csv data file from github
+#step1 <- "https://github.com/Reilly-ConceptsCognitionLab/sandbox_scrapfiles/raw/main/fakedat.csv"
+#step2 <- read.csv(step1, header=T)
+#read string data using 'here' from a local directory
+#to_R <- readLines(here("data", "MyRaw.txt")) ---- using 'here' to read in data
+#to_format <- paste(to_R, collapse=" ")
+#textfromgittoR <- paste(readLines("https://github.com/reilly-lab/TempleTextMine2020/raw/master/unabomber_manifesto.txt"), collapse = " ")  #from github
+```
+
+# Load Lookup Databbase
+Your lookup database contains values or 'metadata' for many words.  
+```{r}
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+lookup_db <- lookup_Jul25
+colnames(lookup_db)
+str(lookup_db)
+```
+
+# Load and Inspect Gaslighting Corpus
+Gaslighting is a multi-document corpus
+```{r}
+# read raw csv from my computer prep to post on github private
+#gaslight <- read.csv('data/gaslight.csv')
+
+#save as *.rda for github
+#save(gaslight, file="data/gaslight.rda")
+
+# Load gaslight corpus 
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/gaslight.rda?raw=true"))
+
+str(gaslight)
+
+gaslight$Gender <- as.factor(gaslight$Gender)
+gaslight$ID <-  as.factor(gaslight$ID)
+gaslight$Ever_Gaslit <- as.factor(gaslight$Ever_Gaslit)
+str(gaslight)
+
+#Make sure your variables are structured the way they should be (hint: factors)
+levels(gaslight$Gender)
+
+my_tab <- table(gaslight$Ever_Gaslit, gaslight$Gender)
+print(my_tab)
+summary(my_tab)
+```
+
+# Jamie cleaning genie
+Here's a cleaning genie that should catch many of the errors and stray dogs that your original cleaning genies missed.
+```{r, eval=T}
+jamie_genie <- function(dat, wordcol, omit_stops = TRUE, lemmatize = TRUE) {
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(stringi)
+  
+  # Input validation
+  #need to tell R what column in your dataframe is the text in quotes 'wordcol', this error message checks
+  if (!wordcol %in% names(dat)) {
+    stop(paste("Column", wordcol, "not found in dataframe"))
+  }
+
+#load stopword and replacement lists from github  
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
+
+
+# Create working copy and perform initial split, standardizes text encoding so all characters are UTF8, adds an id variable
+# transform all text to lower
+  dat_prep <- dat %>% dplyr::mutate(id_row_orig = factor(seq_len(nrow(dat))),
+      text_initialsplit = tryCatch(stringi::stri_enc_toutf8(as.character(.[[wordcol]]),
+                                 is_unknown_8bit = TRUE,
+                                 validate = TRUE), error = function(e) stringi::stri_encode(as.character(.[[wordcol]]), to = "UTF-8")
+      ) %>% tolower())
+
+  # Standardize apostrophes in original text
+  dat_prep <- dat_prep %>% dplyr::mutate(text_initialsplit = ifelse(
+        is.na(text_initialsplit), NA_character_, stringi::stri_replace_all_regex(
+          text_initialsplit,
+          "[\u2018\u2019\u02BC\u201B\uFF07\u0092\u0091\u0060\u00B4\u2032\u2035]",
+          "'"
+        )
+      )
+    )
+
+  # Perform initial split into words (retains contractions)
+  dat_prep <- dat_prep %>% tidyr::separate_rows(text_initialsplit, sep = "[[:space:]]+") %>%
+    dplyr::mutate(
+      text_initialsplit = ifelse(
+        is.na(text_initialsplit) | stringi::stri_isempty(text_initialsplit),
+        NA_character_,
+        text_initialsplit
+      )
+    ) %>%
+    # Remove original column
+    dplyr::select(-all_of(wordcol))
+
+  # Initialize cleaning column with actual cleaned text
+  dat_prep <- dat_prep %>%
+    dplyr::mutate(
+      word_clean = text_initialsplit,
+      # Remove non-alphabetic characters except apostrophes
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-zA-Z']", " ")
+      ),
+      # Squish whitespace
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringr::str_squish(word_clean)
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-z']", "")
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^[:alnum:]']", "")
+      )
+    )
+
+#Replace words function - this finds contractions and replaces them with their expanded forms from a lookup database. 
+ replace_words <- function(word_clean, replacement_df) {
+ for (i in seq_len(nrow(replacement_df))) {
+   text_vector <- gsub(
+     pattern = replacement_df$word[i],
+     replacement = replacement_df$replacement[i],
+     x = word_clean, ignore.case = TRUE)
+ }
+ return(word_clean)
+ }
+ 
+ #run replace words function on dat_prep
+dat_prep <- replace_words(dat_prep, replacement_df = replacements_25)
+  
+  
+
+  # Perform additional splitting after replacements (keeping NAs)
+  dat_prep <- dat_prep %>%
+    tidyr::separate_rows(word_clean, sep = "[[:space:]]+", convert = TRUE) %>%
+    dplyr::mutate(
+      word_clean = ifelse(
+        is.na(word_clean) | stringi::stri_isempty(word_clean),
+        NA_character_,
+        word_clean
+      ),
+      id_row_postsplit = seq_len(dplyr::n())  # Fixed this line
+    )
+
+  # Lemmatization if requested (only for non-NA values)
+  if (lemmatize) {
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        word_clean = ifelse(
+          is.na(word_clean),
+          NA_character_,
+          textstem::lemmatize_strings(word_clean)
+        )
+      )
+  }
+
+  # Stopword removal if requested (now keeps NAs)
+  if (omit_stops) {
+    stopwords <- tolower(Temple_stops25$word)
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        is_stopword = ifelse(
+          is.na(word_clean),
+          NA,
+          word_clean %in% stopwords
+        ),
+        word_clean = ifelse(is_stopword, NA_character_, word_clean)
+      ) %>%
+      dplyr::select(-is_stopword)  # Remove the is_stopword column
+  }
+
+  return(dat_prep)
+}
+
+```
+
+# Clean your corpus
+Adjust genie as needed
+```{r, eval=F}
+
+gaslight_just_story <- gaslight %>% select(ID, gd_adult_story)
+str(gaslight_just_story)
+
+mycleandat <- jamie_genie(gaslight_just_story, 'gd_adult_story')
+print(mycleandat) 
+```
+
+# Yoke values from lookup database
+Choose a few variables (e.g., 3) to characterize gaslighting on
+```{r}
+#Choose some variables from the lookup database
+
+#Check terms for joining on
+my_gaslight <- gaslight_clean %>% dplyr::left_join(lookup, by = c("CHANGE_THIS" = "CHANGE_THIS")) 
+```
+
+# Inspect joined data
+```{r}
+head(my_gaslight, n=125)
+```
+
+# Summarize data
+Mean, min, max, SD for each variable <br>
+Remember to group by your document_ID
+```{r}
+#group dataframe by ID, then summarize your vars
+my_gaslight <- my_gaslight %>% group_by(ID) %>% dplyr::summarize_at(c("VAR1", "VAR2"), list(mean=mean, sd=sd, min = min, max = max), na.rm=T) %>% ungroup()
+head(my_gaslight, n=50)
+```
+
+
+# Visualize your data
+```{r}
+
+```
+
+
+## Archive
+```{r, eval=F}
+
+# ARCHIVE
+# Join lookup data to target text by row
+df_prep <- test %>% dplyr::left_join(lookup_small, by = c("doc_lemmatized" = "word")) 
+print(df_prep)
+```
+

@@ -1,0 +1,363 @@
+---
+title: "Week 6"
+author: "Shawn Wang"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 1
+    css: "../stylesTemplates/sw_1_professional.css"
+# knit: (function(inputFile, encoding) {
+#     rmarkdown::render(inputFile, encoding = encoding, output_dir = "../docs")
+#   })
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", 
+           "RCurl", "psych", "knitr", 
+           "RColorBrewer", 'dplyr', "tidytext",
+           "tm", "stringi", "textstem", "psych", "ggdist", 
+           "viridis", "zoo", "Hmisc", "reshape", "plotly", "ggResidpanel",
+           install=T)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', 'quanteda', 'readtext', install=T)
+
+
+library("quanteda.textplots")
+library(quanteda.textstats)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+
+# Load gaslight corpus from github
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/gaslight.rda?raw=true"))
+
+#load in database from online
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+```
+
+
+# Cleaning Genie
+
+```{r}
+jamie_genie <- function(dat, wordcol, omit_stops = TRUE, lemmatize = TRUE) {
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(stringi)
+  
+  # Input validation
+  #need to tell R what column in your dataframe is the text in quotes 'wordcol', this error message checks
+  if (!wordcol %in% names(dat)) {
+    stop(paste("Column", wordcol, "not found in dataframe"))
+  }
+
+#load stopword and replacement lists from github  
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
+
+
+# Create working copy and perform initial split, standardizes text encoding so all characters are UTF8, adds an id variable
+# transform all text to lower
+  dat_prep <- dat %>% dplyr::mutate(id_row_orig = factor(seq_len(nrow(dat))),
+      text_initialsplit = tryCatch(stringi::stri_enc_toutf8(as.character(.[[wordcol]]),
+                                 is_unknown_8bit = TRUE,
+                                 validate = TRUE), error = function(e) stringi::stri_encode(as.character(.[[wordcol]]), to = "UTF-8")
+      ) %>% tolower())
+
+  # Standardize apostrophes in original text
+  dat_prep <- dat_prep %>% dplyr::mutate(text_initialsplit = ifelse(
+        is.na(text_initialsplit), NA_character_, stringi::stri_replace_all_regex(
+          text_initialsplit,
+          "[\u2018\u2019\u02BC\u201B\uFF07\u0092\u0091\u0060\u00B4\u2032\u2035]",
+          "'"
+        )
+      )
+    )
+
+  # Perform initial split into words (retains contractions)
+  dat_prep <- dat_prep %>% tidyr::separate_rows(text_initialsplit, sep = "[[:space:]]+") %>%
+    dplyr::mutate(
+      text_initialsplit = ifelse(
+        is.na(text_initialsplit) | stringi::stri_isempty(text_initialsplit),
+        NA_character_,
+        text_initialsplit
+      )
+    ) %>%
+    # Remove original column
+    dplyr::select(-all_of(wordcol))
+
+  # Initialize cleaning column with actual cleaned text
+  dat_prep <- dat_prep %>%
+    dplyr::mutate(
+      word_clean = text_initialsplit,
+      # Remove non-alphabetic characters except apostrophes
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-zA-Z']", " ")
+      ),
+      # Squish whitespace
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringr::str_squish(word_clean)
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-z']", "")
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^[:alnum:]']", "")
+      )
+    )
+
+#Replace words function - this finds contractions and replaces them with their expanded forms from a lookup database. 
+ replace_words <- function(word_clean, replacement_df) {
+ for (i in seq_len(nrow(replacement_df))) {
+   text_vector <- gsub(
+     pattern = replacement_df$word[i],
+     replacement = replacement_df$replacement[i],
+     x = word_clean, ignore.case = TRUE)
+ }
+ return(word_clean)
+ }
+ 
+ #run replace words function on dat_prep
+dat_prep <- replace_words(dat_prep, replacement_df = replacements_25)
+  
+  
+
+  # Perform additional splitting after replacements (keeping NAs)
+  dat_prep <- dat_prep %>%
+    tidyr::separate_rows(word_clean, sep = "[[:space:]]+", convert = TRUE) %>%
+    dplyr::mutate(
+      word_clean = ifelse(
+        is.na(word_clean) | stringi::stri_isempty(word_clean),
+        NA_character_,
+        word_clean
+      ),
+      id_row_postsplit = seq_len(dplyr::n())  # Fixed this line
+    )
+
+  # Lemmatization if requested (only for non-NA values)
+  if (lemmatize) {
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        word_clean = ifelse(
+          is.na(word_clean),
+          NA_character_,
+          textstem::lemmatize_strings(word_clean)
+        )
+      )
+  }
+
+  # Stopword removal if requested (now keeps NAs)
+  if (omit_stops) {
+    stopwords <- tolower(Temple_stops25$word)
+    dat_prep <- dat_prep %>%
+      dplyr::mutate(
+        is_stopword = ifelse(
+          is.na(word_clean),
+          NA,
+          word_clean %in% stopwords
+        ),
+        word_clean = ifelse(is_stopword, NA_character_, word_clean)
+      ) %>%
+      dplyr::select(-is_stopword)  # Remove the is_stopword column
+  }
+
+  return(dat_prep)
+}
+
+```
+
+
+<br>
+
+# Hypotheses
+
+I am hypothesizing that the level of anger the definition of gaslighting and level of anger in the story about gaslighting will be positively correlated--i.e. that increases in anger in one's definition of gaslighting will be associated with increases in anger in the stories about gaslighting. I will test this by processing each corpus separately, generating values of anger for each, and using a linear regression to investigate the relationship between anger scores between the two.
+
+<br>
+
+# Sample Characteristics
+```{r}
+
+
+gaslight %>%
+  group_by(Gender) %>% #group by gender to get values per group
+  dplyr::summarize(n = n(), #raw counts
+                   Percentage = round(n()/1034, 2)) %>% #percentage
+  kable()
+
+gaslight %>%
+  group_by(Gender) %>%
+  dplyr::summarize(`Mean Age` = mean(Age, na.rm = TRUE),
+                   `Age SD` = sd(Age, na.rm = TRUE)) %>%
+  kable()
+```
+
+The sample is characterized by predominantly women (79%) with 19% being men and a small proportion (2%) not identifying. The mean age of each gender is about equal. Spread as measured by standard deviation is also about equal.
+
+<br>
+
+# Data Preparation/Cleaning
+
+
+To prepare the data, I will:
+
+1. Load in the dataset from github
+2. Split the dataset into two data frames, one for the stories and one for the definitions
+3. Run the cleaning genie separately on both, removing stopwords and lemmatizing
+  - I am removing stopwords because I believe they are not relevant to the research question
+  - Similarly, I do not believe the tenses or morphology of the words are relevant
+4. After cleaning, I will then further clean each dataset by filtering to only non-NA cleaned word rows.
+  - I will also retain only the ID and cleaned word columns
+5. For each data frame separately, I will assign anger values to each word using the lookup database
+6. I will generate anger values per person by averaging across the anger of all their words for both story and definition separately, thus creating a data frame for each that is a single row and anger value per person
+7. Finally, I will join these data frames back together by ID
+```{r}
+
+#load in the lookup database
+lookup_small <- lookup_Jul25 %>%
+  select(word, emo_anger)
+
+
+#clean each dataset separately
+gaslight_story <- gaslight %>%
+  select(ID, gd_adult_story)
+gaslight_def <- gaslight %>%
+  select(ID, gd_adult_definition)
+
+
+gaslight_story_clean <- jamie_genie(dat = gaslight_story, wordcol = "gd_adult_story") %>% #apply genie
+  filter(!is.na(word_clean)) %>% #filter to only words kept
+  rename("word_clean_story" = "word_clean") %>% #rename column so it doesn't merge with other set
+  select(ID, word_clean_story) #select relevant columns
+gaslight_def_clean <- jamie_genie(dat = gaslight_def, wordcol = "gd_adult_definition") %>%
+  filter(!is.na(word_clean)) %>%
+  rename("word_clean_def" = "word_clean") %>%
+  select(ID, word_clean_def)
+
+
+#join with the lookup table, keeping only words in our data
+gaslight_story_anger <- left_join(gaslight_story_clean, lookup_small, by = c("word_clean_story" = "word")) %>% group_by(ID) %>% #calculate statistics per ID
+  dplyr::summarize(mean_anger_story = mean(emo_anger, na.rm = TRUE)) #calculate mean anger scores
+  
+gaslight_def_anger <- left_join(gaslight_def_clean, lookup_small, by = c("word_clean_def" = "word")) %>% group_by(ID) %>%
+  dplyr::summarize(mean_anger_def = mean(emo_anger, na.rm = TRUE))
+
+
+#join both datasets together into full dataset
+full_df <- full_join(gaslight_story_anger, gaslight_def_anger, by = "ID")
+```
+
+
+<br>
+
+# Data Analysis
+
+
+First, I want to look at the distributions of the angers between both story and definitions of gaslighting.
+
+```{r}
+
+#pivot longer so that there is one column condition with values mean_anger_def and mean_anger_story
+#another column of anger values
+#this is important for plotting
+full_df %>%
+  pivot_longer(cols = c(mean_anger_def, mean_anger_story),
+               names_to = "condition", values_to = "anger") %>%
+  ggplot(mapping = aes(x = condition, y = anger, group = condition, color = condition)) +
+  geom_violin() + #violin plot
+  theme_classic() #looks cleaner
+```
+
+The boxplots show that the distributions between anger in the definition and the stories look to be different from each other. Interestingly, the spread of anger values for the definition is greater than it is for the story condition. This is counterintuitive as one would imagine the narrative motivation of the story would inspire more anger in the text than in definitions, which tend to be clinical and unemotional.
+
+<br>
+
+In order to test my hypothesis, I will run a linear regression between anger of story and anger of definition. 
+
+```{r}
+
+#run linear model
+model <- lm(mean_anger_story ~ mean_anger_def, data = full_df)
+
+#view results
+summary(model)
+```
+
+
+
+The model suggests that anger in the gaslighting story text is significantly positively associated with anger in the gaslighting definition (b = 0.07, SE = 0.02, t = 3.97, p < .001). This suggests that those who display more anger lexcially in their definition of gaslighting tend to also communicate more anger lexically in their stories of gaslighting. This makes sense as those who have more anger towards gaslighting as a concept and thus communicate more anger in their definition may have had previous negative experiences with gaslighting, and thus are more likely to be primed towards anger in their stories as well. 
+
+
+
+```{r}
+full_df %>%
+  ggplot(mapping = aes(x = mean_anger_def, y = mean_anger_story)) +
+  geom_smooth() + geom_point() + #plot line plot and the scatterplot of data points
+  theme_classic()
+```
+
+
+And when we look at a graphical display of the relationship between the two, we can notice this slight positive correlation between anger values from the two corpuses. 
+
+
+<br>
+
+# Bonus Exploratory Analyses
+
+Based on my interpretation of the previous model, I am curious whether the relationship between anger in the definition and the stories of gaslighting may be moderated by previous experiences with gaslighting. Thus, I will conduct a moderation analysis to assess this. 
+
+```{r}
+
+#have to add in the new column for gaslighting history
+gaslight_history <- gaslight %>%
+  select(ID, Ever_Gaslit)
+#new data frame with moderating variable
+full_df_mod <- full_join(full_df, gaslight_history, by = "ID")
+
+
+#fit the model with moderator
+model2 <- lm(mean_anger_story ~ mean_anger_def*Ever_Gaslit, data = full_df_mod)
+summary(model2)
+
+
+```
+
+This additional analysis suggests that there is not a moderating effect of being gaslit in the past on the relationship between anger in the definition and story about gaslighting. Because of this, perhaps my original interpretation can be updated to reflect this new data. An alternative explanation could be that those who are generally angrier at a trait level are more likely to have their anger reflected in their language at a baseline level, and thus will have higher anger scores on both definition and story. However, we don't have a measure of baseline anger to test this against so I cannot verify it at the moment. 
+
+
+```{r}
+full_df_mod %>%
+  ggplot(mapping = aes(x = mean_anger_def, y = mean_anger_story, group = Ever_Gaslit, color = Ever_Gaslit)) +
+  geom_smooth(method = "lm") + geom_point() + #plot line plot and the scatterplot of data points
+  theme_classic()
+```
+And we can see from the scatterplot broken down by gaslighting exposure that the lines do not seem to differ too much, which supports the lack of moderation finding. 
