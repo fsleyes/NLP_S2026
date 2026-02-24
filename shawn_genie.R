@@ -5,6 +5,7 @@ shawn_genie <- function(x, wordcol) {
   library(tm)
   library(stringr)
   library(stringi)
+  library(textstem)
   load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
   load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
   
