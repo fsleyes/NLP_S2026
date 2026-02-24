@@ -1,6 +1,8 @@
 shawn_genie <- function(x, wordcol) {
   
   
+  library(tidyverse)
+  library(tm)
   library(stringr)
   library(stringi)
   load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))

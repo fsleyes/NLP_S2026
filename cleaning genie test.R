@@ -11,20 +11,20 @@
 # )
 
 
-# larger_test_data <- data.frame(
-#   participant_id = c(201, 202, 203, 204, 205, 206, 207),
-#   condition = c("Control", "Treatment", "Treatment", "Control", "Treatment", "Control", "Control"),
-#   response_text = c(
-#     "I haven't been sleeping... it's like my bra/in won't shut off.", # Heavy contractions
-#     "The patient’s sy25mptoms weren’t alleviated by the 50mg dosage.", # Smart quotes + numbers
-#     "HA'SN'T anyone noticed the 'side-effects' yet??",               # The "Double Apostrophe" + messy punctuation
-#     "I'm NOT feeli.,ng better; actu./,ally, IV I'm feeling-much worse.",    # Capitalization + Negation
-#     "She said, `It`s a V struggle,` but he d235oesn't care.",            # Backticks + nested quotes
-#     "Data-driven results are 100% better than 'gut feelings'.",     # Hyphens and percentages
-#     "   Wait... why is there so much     whi463tespace here?   "        # Excessive whitespace
-#   ),
-#   stringsAsFactors = FALSE
-# )
+larger_test_data <- data.frame(
+  participant_id = c(201, 202, 203, 204, 205, 206, 207),
+  condition = c("Control", "Treatment", "Treatment", "Control", "Treatment", "Control", "Control"),
+  response_text = c(
+    "I haven't been sleeping... it's like my bra/in won't shut off.", # Heavy contractions
+    "The patient’s sy25mptoms weren’t alleviated by the 50mg dosage.", # Smart quotes + numbers
+    "HA'SN'T anyone noticed the 'side-effects' yet??",               # The "Double Apostrophe" + messy punctuation
+    "I'm NOT feeli.,ng better; actu./,ally, IV I'm feeling-much worse.",    # Capitalization + Negation
+    "She said, `It`s a V struggle,` but he d235oesn't care.",            # Backticks + nested quotes
+    "Data-driven results are 100% better than 'gut feelings'.",     # Hyphens and percentages
+    "   Wait... why is there so much     whi463tespace here?   "        # Excessive whitespace
+  ),
+  stringsAsFactors = FALSE
+)
 
 
 stress_test_data <- data.frame(
