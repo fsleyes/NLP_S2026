@@ -363,6 +363,8 @@ unabomb_df <- data.frame(ID = "TK", text = unabomb_raw) %>%
             text = paste0(unabomb_raw, collapse = " "))
 
 unabomb_clean <- shawn_genie(unabomb_df, "text")
+unabomb_clean_df <- shawn_genie(unabomb_df, "text")
+
 
 
 
@@ -376,9 +378,9 @@ unabomb_clean <- shawn_genie(unabomb_df, "text")
 
 ```{r}
 #corpus() is used to turn a text data frame with one row per document, columns for metadata then one column for text
-unabomb_corpus <- corpus(unabomb_clean_df, 
+unabomb_corpus <- corpus(unabomb_clean_df,
                          doc_id_field = "author",
-                         text_field = "doc_text")
+                         text_field = "text")
 
 #tokenize
 tokens_unabomb <- tokens(unabomb_corpus)
@@ -462,7 +464,7 @@ load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/bl
 #cut the database to the variables that we're interested in
 lookup_small <- lookup_Jul25 %>% select(word, emo_arousal_b24, emo_intensity, emo_trust, emo_valence_b24, lex_AoA)
 
-df_prep <- unabomb_clean %>% left_join(lookup_small, by = c("string" = "word")) 
+df_prep <- unabomb_clean %>% left_join(lookup_small, by = c("text" = "word")) 
 ```
 
 
@@ -471,7 +473,7 @@ df_prep <- unabomb_clean %>% left_join(lookup_small, by = c("string" = "word"))
 describe() from psych package is an easy way of getting basic descriptive statistics from columns extracted from databases.
 ```{r}
 df_prep %>%
-  select(-string) %>%
+  select(-text) %>%
   psych::describe() %>%
   select(mean, sd, median)
   
@@ -551,12 +553,12 @@ df_prep %>% mutate(smooth_intensity = zoo::rollmean(emo_intensity, k = 5, fill =
 
 Correlation plots can show general trends of relationships between variables:
 
-```{r}
+```{r, eval = FALSE}
 library(Hmisc)
 library(reshape)
 
 cor_df <- df_prep %>%
-  select(-string)
+  select(-text)
 
 get_upper_tri <- function(cormat){
     cormat[lower.tri(cormat)]<- NA
@@ -601,3 +603,393 @@ df_prep %>%
   scale_color_gradient(low = "blue", high = "red") + 
   theme_classic()
 ```
+
+
+
+
+
+
+<br>
+
+# TEXT MESSAGE ANALYSIS FUNCTIONS
+
+
+
+## Process raw text files from imessage-exporter tool on GitHub
+
+imessage-exporter tool can be accessed through here: https://github.com/ReagentX/imessage-exporter. This tool will provide raw txt files that this function is designed to take natively.
+```{r}
+#file is a path to a raw txt file extracted using imessage-exporter
+#will return one line per message, not one line per word
+process_txt <- function(file, speaker_name, remove_attach = TRUE) {
+  
+  text_raw <- readLines(file)
+  text_raw_df <- data.frame(raw_text = text_raw)
+  text_df <- text_raw_df %>%
+    mutate(chunk_id = cumsum(raw_text == ""), #identify chunks of text in txt file
+           reply_text = case_when(
+             grepl(pattern = "    ", x = raw_text) == TRUE ~ 0,
+             TRUE ~ 1
+           )) %>%
+    filter(raw_text != "" &
+             reply_text == 1) %>%
+    group_by(chunk_id) %>%
+    summarize(
+      full_content = paste(raw_text, collapse = "\n"),
+      .groups = "drop"
+    ) %>%
+    filter(full_content != "This message responded to an earlier message.") #filter some unwanted stuff
+  
+  #separate into lines
+  text_df_split <- text_df %>%
+    separate(full_content,
+             into = c("time", "speaker", "text"),
+             sep = "\n",
+             extra = "merge") %>%
+    mutate(text = gsub(pattern = "This message responded to an earlier message.",
+                       replacement = "", 
+                       x = text),
+           text = str_remove(pattern = "Tapbacks:\\D*",
+                             string = text),
+           time = str_remove(pattern = "\\s*\\(Read by.*?\\)",
+                             string = time)) %>%
+    filter(!is.na(text)) %>%
+    mutate(attach_text = #filter out attachments
+             case_when(
+               grepl(pattern = "/Users/shawnwang/Library/Messages/Attachments\\d*D*", x = text) == TRUE ~ 0,
+               TRUE ~ 1
+             )) %>%
+    { if(remove_attach == TRUE) filter(., attach_text == 1) else . } %>%
+    #filter(attach_text == 1) %>%
+    mutate(speaker = recode(speaker, Me = speaker_name), #recode speaker name
+           datetime = strptime(time, format = "%b %d, %Y %I:%M:%S %p")) %>%
+    select(speaker, text, datetime)
+  
+  #we only want two person conversations
+  speakers <- unique(text_df_split$speaker)[1:2]
+  
+  if (length(speakers) == 1 | length(speakers) == 0 |
+      is.na(speakers[[1]]) | is.na(speakers[[2]])) {
+    return(tibble())
+  }
+  
+  if (str_detect(string = speakers[1], pattern = "\\+") | 
+      str_detect(string = speakers[2], pattern = "\\+")) {
+    
+    return(tibble())
+  }
+  
+  
+  #create recipient
+  text_df_names <- text_df_split %>%
+    mutate(recipient = case_when(
+      speaker == speakers[1] ~ speakers[2],
+      speaker == speakers[2] ~ speakers[1],
+      
+    ))
+  
+  
+  
+  return(text_df_names)
+  
+}
+
+```
+
+
+
+
+<br> 
+
+## Calculate reaction time
+
+This function calculates ratios of response times between two partners in a text message conversation. 
+```{r}
+calc_rt_ratio <- function(sentences, 
+                          sec_threshold = 172800, #we assume by default 2 day gaps
+                          speaker_str,
+                          arrange_by = "median") {
+  
+
+    
+  
+  data_prep <- sentences %>%
+    group_by(convo_num) %>%
+    mutate(prev_gap = as.numeric(difftime(datetime, 
+                                          lag(datetime, default = first(datetime)), 
+                                          units = "secs")), #create time differences
+           new_turn = speaker != lag(speaker, default = first(speaker)) | #indicate new turns
+             prev_gap > sec_threshold,
+           turn_id = cumsum(new_turn)) %>%  #identify new turns 
+    group_by(convo_num, turn_id) %>%
+    summarize(speaker = first(speaker, na_rm = TRUE),
+              recipient = first(recipient, na_rm = TRUE),
+              turn_start = min(datetime),
+              turn_end = max(datetime),
+              message_count = n(), 
+              .groups = "drop_last") %>%
+    filter(!is.na(turn_start)) %>%
+    group_by(convo_num) %>%
+    mutate(response_timestamp = lead(turn_start), #calculate response times
+           response_time = difftime(response_timestamp, 
+                                    turn_end, 
+                                    units = "secs"),
+           exchange_id = cumsum(ifelse(response_time > sec_threshold, 1, 0)),
+           exchange_id = lag(exchange_id, 
+                             default = first(exchange_id))) %>%
+    group_by(convo_num, exchange_id) %>%
+    mutate(valid_response_time = ifelse(response_time > sec_threshold, 
+                                        NA, 
+                                        response_time)) #identify which ones are the ends of convos
+  
+
+  
+  data_sum <- data_prep %>%
+    group_by(convo_num, recipient) %>%
+    summarize(mean_rt = mean(valid_response_time, na.rm = TRUE), #calculate means and medians
+              median_rt = median(valid_response_time, na.rm = TRUE),
+              message_count = sum(message_count),
+              num_exchanges = max(exchange_id, na.rm = TRUE)) %>%
+    ungroup() %>%
+    mutate(mean_rt = ifelse(is.nan(mean_rt), NA, mean_rt),
+           median_rt = ifelse(is.nan(median_rt), NA, median_rt)) %>%
+    filter(!is.na(mean_rt))
+  
+  
+  
+  
+  data_rt_ratio <- data_sum %>% #calculate the ratios
+    group_by(convo_num) %>%
+    filter(!is.na(recipient)) %>%
+    filter(n() == 2) %>%
+    summarize(
+      rt_shawn_mean = mean_rt[recipient == speaker_str],
+      rt_shawn_median = median_rt[recipient == speaker_str],
+      rt_other_mean = mean_rt[recipient != speaker_str],
+      rt_other_median = median_rt[recipient != speaker_str], 
+      num_messages_recipient = unique(message_count[recipient != speaker_str]),
+      
+      rt_ratio_mean = rt_other_mean/rt_shawn_mean,
+      rt_ratio_mean_log = log(rt_other_mean) - log(rt_shawn_mean),
+      rt_ratio_median = rt_other_median / rt_shawn_median,
+      other_recipient = first(recipient[recipient != speaker_str]),
+      .groups = "drop"
+    ) %>%
+    relocate(convo_num, other_recipient, rt_ratio_mean, rt_ratio_median) 
+
+  
+  if (arrange_by == "median") {
+    final_data <- data_rt_ratio %>%
+      arrange(desc(rt_ratio_median))
+  } else if (arrange_by == "mean") {
+    final_data <- data_rt_ratio %>%
+      arrange(desc(rt_ratio_mean))
+  }
+  
+  return(final_data)
+  
+    
+}
+
+```
+
+
+
+<br>
+
+## Plotting sentiment over time 
+
+This function plots any number of sentiment values between two people in a conversational dyad over the time of the conversation.
+```{r}
+plot_convo <- function(data, people, sentiment) {
+  
+  sent_label <- sentiment
+  
+  data_prep <- data %>%
+    filter(!is.na(word_clean)) %>%
+    filter(speaker %in% people & recipient %in% people) %>% #filter dataset to only the two speakers
+    left_join(small_lookup, by = c("word_clean" = "word")) #join to dataset
+  
+
+  
+  
+  plot <- data_prep %>%
+    mutate(sentiment_z = scale(.data[[sentiment]])) %>% #scale sentiments to be on same scale for plotting
+    ggplot(mapping = aes(x = datetime, y = sentiment_z, color = speaker)) +
+    geom_smooth(se = FALSE) + 
+    scale_color_manual(values = setNames(c("forestgreen", "red"), people)) +
+    labs(
+      y = sent_label
+    )
+  
+  return(plot)
+}
+
+```
+
+
+<br>
+
+
+## Calculate Down Bad Index
+
+This function takes a number of helper functions and weights them to create an average summary value of dyadic behavioral asymmetry. 
+```{r}
+dbi <- function(df, 
+                speaker_str,
+                sec_threshold = 172800,
+                message_threshold = NA,
+                date_threshold = NA,
+                date_max = NA,
+                weights) {
+  
+
+  if (!is.list(weights)) {
+    stop("weights must be a list")
+  }
+  
+  expected <- c("word_ratio_log_z", "message_ratio_log_z", "end_ratio_log_z",
+                "init_ratio_log_z", "rt_ratio_median_log_z") #we need to specify weights for fn
+  if (!all(names(weights) %in% expected)) {
+    stop("weights names must match: ", paste(expected, collapse = ", "))
+  }
+  if (round(sum(unlist(weights)), 10) != 1) {
+    stop("weights must sum to 1")
+  }
+  
+  
+  
+  #run the individual functions to create ratios
+  #these individual functions do the heavy lifting
+  sentence_cleaned <- prepare_sentences(df,
+                                        date_threshold = date_threshold,
+                                        date_max = date_max,
+                                        message_threshold = message_threshold)
+  
+  
+  rt_ranking <- calc_rt_ratio(sentences = sentence_cleaned,
+                              speaker_str = speaker_str,
+                              sec_threshold = sec_threshold)
+  
+  
+  
+  init_convo_ranking <- calc_init_ratio(sentences = sentence_cleaned,
+                                        speaker_str = speaker_str,
+                                        sec_threshold = sec_threshold)
+  
+  
+  end_convo_ranking <- calc_end_ratio(sentences = sentence_cleaned,
+                                      speaker_str = speaker_str,
+                                      sec_threshold = sec_threshold)
+  
+  
+  word_ratio_ranking <- word_message_ratio(sentences = sentence_cleaned,
+                                           speaker_str = speaker_str)
+  
+  
+  #join all the ratio datasets together
+  join_list <- list(word_ratio_ranking, end_convo_ranking, init_convo_ranking, rt_ranking)
+  
+  joined_df <- reduce(join_list, full_join, by = c("other_recipient", "convo_num")) %>%
+    select(convo_num, other_recipient, word_ratio, message_ratio, end_ratio, 
+           init_ratio, rt_ratio_mean, rt_ratio_median, speaker_messages, other_messages)
+  
+  #log transform to get out of ratio scale
+  joined_df_log <- joined_df %>%
+    mutate(across(c(word_ratio, message_ratio, end_ratio, 
+                    init_ratio, rt_ratio_mean, rt_ratio_median),
+                  ~ log(.x),
+                  .names = "{.col}_log"))
+  
+  #z score to standardize across all variables
+  joined_df_z <- joined_df_log %>%
+    mutate(across(c(word_ratio_log, message_ratio_log, end_ratio_log, 
+                    init_ratio_log, rt_ratio_mean_log, rt_ratio_median_log),
+                  ~ .x / sd(.x, na.rm = TRUE), #z score WITHOUT centering
+                  .names = "{.col}_z"))
+  
+  
+  #join the dataset together
+  final_df <- joined_df_z %>%
+    mutate(dbi = rowSums(across(names(weights), 
+                                ~ .x * weights[[cur_column()]]))) %>%
+    arrange(desc(dbi)) %>%
+    relocate(other_recipient, dbi)
+  
+  
+  
+  return(final_df)
+  
+}
+```
+
+
+
+<br>
+
+
+## Calculate initiation ratio
+
+This is an example of one of those helper functions utilized by the dbi function in order to calculate the number of conversations initiated by each person in a conversational dyad. 
+```{r}
+calc_init_ratio <- function(sentences, 
+                            sec_threshold = 172800,
+                            speaker_str) {
+  
+
+  
+  #calculate turns and response times just like before
+  data_prep <- sentences %>%
+    group_by(convo_num) %>%
+    mutate(prev_gap = as.numeric(difftime(datetime, 
+                                          lag(datetime, default = first(datetime)), 
+                                          units = "secs")),
+           new_turn = speaker != lag(speaker, default = first(speaker)) |
+             prev_gap > sec_threshold,
+           turn_id = cumsum(new_turn)) %>%
+    group_by(convo_num, turn_id) %>%
+    summarize(speaker = first(speaker, na_rm = TRUE),
+              recipient = first(recipient, na_rm = TRUE),
+              turn_start = min(datetime),
+              turn_end = max(datetime),
+              message_count = n(),
+              .groups = "drop_last") %>%
+    filter(!is.na(turn_start)) %>%
+    group_by(convo_num) %>%
+    mutate(response_timestamp = lead(turn_start),
+           response_time = difftime(response_timestamp, 
+                                    turn_end, 
+                                    units = "secs"),
+           exchange_id = cumsum(ifelse(response_time > sec_threshold, 1, 0)),
+           exchange_id = lag(exchange_id, 
+                             default = first(exchange_id)))
+  
+  
+  #count how many times each person starts a conversation
+  data_calc <- data_prep %>%
+    group_by(convo_num, exchange_id) %>%
+    summarize(speaker_init = first(speaker),
+              init_message_count = first(message_count)) %>%
+    group_by(convo_num, speaker_init) %>%
+    summarize(num_init = n()) %>%
+    group_by(convo_num) %>%
+    filter(n() == 2)
+  
+  #summarize into ratios
+  data_ratio <- data_calc %>%
+    group_by(convo_num) %>%
+    summarize(init_speaker = num_init[speaker_init == speaker_str],
+              init_other = num_init[speaker_init != speaker_str],
+              
+              init_ratio = init_speaker / init_other,
+              other_recipient = first(speaker_init[speaker_init != speaker_str]),
+              .groups = "drop") %>%
+    arrange(desc(init_ratio))
+  
+  return(data_ratio)
+  
+  
+  
+}
+```
+

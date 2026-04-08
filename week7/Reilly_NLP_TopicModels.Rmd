@@ -1,0 +1,371 @@
+---
+title: "Topic Modeling"
+author: "Jamie Reilly, Ph.D."
+date: "`r format(Sys.Date(), '%B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 1
+    code_folding: true
+    css: "https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/jr_20.css?raw=true"
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", 'stringi', 'quanteda', 'readr', 'textclean', 'readtext', "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'sotu', 'udpipe', 'caret', 'text2vec', 'textmineR', 'topicmodels',  'quanteda.textmodels', 'seededlda', 'tm', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+```
+
+# TOPIC MODELS
+[Link to Kasper Welbers YouTube tutorial about LDA](https://www.youtube.com/watch?v=4YyoMGv1nkc) <br>
+<br>
+
+Annotate each of these code snippets as you watch the YT video
+```{r}
+library(quanteda)
+
+#splits corpus into paragraphs
+inaugurations_raw <- corpus_reshape(data_corpus_inaugural, to = "paragraphs")
+
+#tokenize the raw data and remove stopwords from the SMART set
+inaugurations_tokenized <- quanteda::tokens(inaugurations_raw, remove_punct = TRUE) %>% tokens_remove(stopwords("SMART"))
+
+
+#turn tokenized set to document feature matrix
+inaugurations_dfm <- dfm(inaugurations_tokenized)
+
+#pull only the tokens that show in at least 5 documents
+inaugurations_dfm_freq5 <- dfm_trim(inaugurations_dfm, min_docfreq = 5)
+print(inaugurations_dfm_freq5)
+
+library(topicmodels)
+
+#convert to a topicmodels format to be accepted by topicmodels package
+inaugurations_dtm_topmod <- convert(inaugurations_dfm_freq5, to = "topicmodels") 
+
+```
+
+
+# Run the topic model and analyze
+Using LDA-based topic model
+```{r}
+
+#k is how many clusters/topics you want the function to find
+# alpha means how spread out topics per documents are
+#higher alpha results in more topics captured per document
+set.seed(193)
+inaugurations_topicmod  <- LDA(inaugurations_dtm_topmod, method = "Gibbs", k = 5,  control = list(alpha = 0.1))
+
+#object created by LDA
+inaugurations_topicmod
+
+#look at top terms per topic
+topicmodels::terms(inaugurations_topicmod, 6)
+
+#annotate me
+topic = 5
+
+#get the posterior distribution of words and documents which can be used to plot word cloud
+#you get the probability that each of those words will be associated with a given topic
+words <- topicmodels::posterior(inaugurations_topicmod)$terms[topic, ]
+
+#show highest probability words per topic
+topwords <- head(sort(words, decreasing = T), n=50)
+head(topwords)
+
+library(wordcloud)
+
+#create wordcloud
+wordcloud(names(topwords), topwords)
+
+#look at documents per topic based on posterior probability
+#this picks topic 6 specifically
+topic.docs = posterior(m)$topics[, topic] 
+
+#sort by the highest probability documents
+topic.docs = sort(topic.docs, decreasing=T)
+head(topic.docs)
+
+#take the name of first document 
+topdoc = names(topic.docs)[1]
+
+#make a corpus from that document
+topdoc_corp = corp[docnames(corp) == topdoc]
+
+#annotate me
+texts(topdoc_corp)
+
+#match rows from dfm and the names together
+docs <- docvars(dfm)[match(rownames(dtm), docnames(dfm)),]
+
+#summarize the statistics into means based on the author of the documents
+tpp = aggregate(posterior(m)$topics, by=docs["President"], mean)
+
+#rename the rows
+rownames(tpp) = tpp$President
+
+#visualize data into a heat map
+heatmap(as.matrix(tpp[-1]))
+```
+
+
+# Code from Jamie
+## Load cleaning genie
+Load whatever cleaning function you work with in the background
+```{r, eval=T}
+
+jamie_genie <- function(dat, wordcol, omit_stops = TRUE, lemmatize = TRUE) {
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(stringi)
+  library(textstem)
+  
+# Convert input object to dataframe
+  dat <- as.data.frame(dat)
+  
+# Input validation, tell R which column in your df is target text, put it in quotes!
+  # Check if wordcol is a character string and specifies a valid column
+  if (!is.character(wordcol) || length(wordcol) != 1) {
+    stop("Oops! You forgot to specify the name of the column in your dataframe (in quotes) that contains your target text for cleaning.")
+  }
+  
+  if (!wordcol %in% names(dat)) {
+    stop(paste("Column", wordcol, "not found in dataframe"))
+  }
+
+#load stopword and replacement lists from github  
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/Temple_stops25.rda?raw=true"))
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/replacements_25.rda?raw=true"))
+
+
+# Create working copy and perform initial split, standardizes text encoding so all characters are UTF8, adds an id variable
+# transform all text to lower
+  dat_prep <- dat %>% dplyr::mutate(id_row_orig = factor(seq_len(nrow(dat))),
+      text_initialsplit = tryCatch(stringi::stri_enc_toutf8(as.character(.[[wordcol]]),
+                                 is_unknown_8bit = TRUE,
+                                 validate = TRUE), error = function(e) stringi::stri_encode(as.character(.[[wordcol]]), to = "UTF-8")) %>% tolower())
+
+  # Standardize apostrophes in original text, replace hyphens with spaces
+  dat_prep <- dat_prep %>% 
+  dplyr::mutate(
+    text_initialsplit = ifelse(
+      is.na(text_initialsplit), 
+      NA_character_, 
+      stringi::stri_replace_all_regex(text_initialsplit,
+        "[\u2018\u2019\u02BC\u201B\uFF07\u0092\u0091\u0060\u00B4\u2032\u2035]", "'")),
+    text_initialsplit = stringi::stri_replace_all_fixed(text_initialsplit, 
+      "-", " "))
+
+  # Perform initial split into words (retains contractions)
+  dat_prep <- dat_prep %>% tidyr::separate_rows(text_initialsplit, sep = "[[:space:]]+") %>%
+    dplyr::mutate(
+      text_initialsplit = ifelse(
+        is.na(text_initialsplit) | stringi::stri_isempty(text_initialsplit),
+        NA_character_,
+        text_initialsplit)) %>%
+    # Remove original column
+    dplyr::select(-all_of(wordcol))
+
+  # Initialize cleaning column with actual cleaned text
+  dat_prep <- dat_prep %>%
+    dplyr::mutate(
+      word_clean = text_initialsplit,
+      # Remove non-alphabetic characters except apostrophes
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-zA-Z']", " ")
+      ),
+      # Squish whitespace
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringr::str_squish(word_clean)
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^a-z']", "")
+      ),
+      word_clean = ifelse(
+        is.na(word_clean),
+        NA_character_,
+        stringi::stri_replace_all_regex(word_clean, "[^[:alnum:]']", "")))
+  
+  
+  #Replace words function - this finds contractions and replaces them with their expanded forms from a lookup database. 
+ replace_words <- function(word_clean, replacement_df) {
+ for (i in seq_len(nrow(replacement_df))) {
+   text_vector <- gsub(
+     pattern = replacement_df$word[i],
+     replacement = replacement_df$replacement[i],
+     x = word_clean, ignore.case = TRUE)
+ }
+ return(word_clean)
+ }
+}
+```
+
+#  Dataset: SOTU Package
+The state of the union `sotu` package contains every US Presidential state of the union address
+[sotu package](https://cran.r-project.org/web/packages/sotu)
+
+```{r}
+library(sotu)
+sotu <- cbind(sotu_text, sotu_meta)
+sotu$id <- seq_along(sotu$year)
+head(sotu)
+```
+
+# Model 1: Obama sotu 2016
+## clean and lemmatize
+use the TM package; data need to be structured as one narrative per row per document. We only have one document (President Obama's transcribed sotu 2016)
+```{r, eval=T}
+obama16 <- sotu %>% dplyr::filter(id == "236")
+colnames(obama16)
+obama_clean <- jamie_genie(obama16, wodcol='sotu_text')  #run cleaning genie on obama
+
+```
+
+## Convert to Corpus and DFM
+```{r, eval=T}
+obama_corpus <- quanteda::corpus(obama_lemma)
+obama_dfm <-quanteda::dfm(obama_corpus)
+print(obama_dfm)
+```
+
+## build model quanteda
+lda seeded from `seededlda` package. Let's try a 5 topic model (k=5).
+```{r, eval=T}
+obama_mod <- textmodel_lda(obama_dfm, k=5)
+terms(obama_mod, 15)  #prints the 15 most frequent terms associated with each topic
+```
+
+# Model 2: All sotus after 1950
+Isolate all SOTU speeches after 1950. These are contained in a dataframe with each sotu speech as a character vector along with metadata in other columns
+```{r}
+modern <- both %>% filter(year > 1950) %>% mutate(my_text = clean(sotu_text)) 
+recent <- modern %>% select(2,3,5,7,8)
+head(recent)
+#test <- aggregate(sotu_text ~ id, data=modern, FUN=paste, collapse= " ")
+```
+
+## read into quanteda maintaining metadata
+retain 'president' and 'year' data,  document id is "id" 
+```{r}
+mydocvars <- c("party", "president", "year")
+sotu_corp <- quanteda::corpus(recent, docid_field = "id", text_field = "my_text", docvars=mydocvars)
+sotu_tok <- quanteda::tokens(sotu_corp)
+sotu_dfm <-  quanteda::dfm(sotu_corp)
+topfeatures(sotu_dfm, 5)
+textplot_wordcloud(sotu_dfm)
+```
+
+# plot lexical dispersion
+quanteda calls this an x-ray plot. It outputs a ggplot2 object, so you can accordingly later ggplot geoms
+```{r, fig.height=11}
+head(docvars(sotu_tok))
+tplot1 <- textplot_xray(kwic(sotu_tok, pattern = "war"), kwic(sotu_tok, pattern = "taxes"), sort=TRUE) 
+tplot1 + aes(color = keyword) + scale_color_manual(values = c('red', 'blue'))
+textplot_xray(kwic(sotu_tok, pattern = "patriots"), kwic(sotu_tok, pattern = "unity"), sort=TRUE)
+```
+
+## plot top frequency
+```{r, fig.width=9, fig.height=7}
+feats <- textstat_frequency(sotu_dfm, n = 50)
+# Sort by reverse frequency order
+feats$feature <- with(feats, reorder(feature, -frequency))
+ggplot(feats, aes(x = feature, y = frequency)) +
+    geom_point(color="red") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+## plot adjacency
+from the topicmodels package - builds a CTM object (correlated term matrix)
+```{r}
+mod1 <- CTM(sotu_dfm, k=8, method = "VEM", control = NULL)
+build_graph(mod1, 0, and = TRUE)  #lambda I set to 0 here - can be 1, don't know why!
+```
+
+## feature co-occurence network
+```{r, fig.height=8, fig.width=10}
+sotu_trim<- dfm_trim(sotu_dfm, min_termfreq = 20)  #trim dfm by frequency
+topfeatures(sotu_trim)
+nfeat(sotu_trim)
+sotu_fcm <- fcm(sotu_trim)
+dim(sotu_fcm)
+sotu_top_names <- names(topfeatures(sotu_fcm, 50))
+sotu_top50 <- fcm_select(sotu_fcm, pattern = sotu_top_names, selection = "keep")
+dim(sotu_top50)
+size <- log(colSums(dfm_select(sotu_dfm, sotu_top_names, selection = "keep")))
+set.seed(123)
+textplot_network(sotu_top50, min_freq = 0.8, vertex_size = size / max(size) * 3)
+```
+
+## wordfish document similarity
+```{r, eval=T, fig.height=11, fig.width=9}
+sotu_fish <- textmodel_wordfish(sotu_dfm, dir = c(6, 5))
+summary(sotu_fish)
+textplot_scale1d(sotu_fish, groups = sotu_dfm$party)
+```
+
+## Topic Models (LDA fit)
+Build an 8-topic model
+```{r, eval=T}
+obama_topics <- LDA(obama_dfm, k = 8, control = list(seed = 123))  #let's try an 8-topic model
+topic_probs <- tidy(obama_topics, matrix = "beta")  
+head(topic_probs, n=20)
+```
+
+# Evaluating topic model fit
+There could be one topic in a document (e.g., "ice is cold") or many topics.  One challenge is that the number of topics (parameter `k`) is user-specified. We must then evaluate the fit of specific topic models. For a nice summary of some of the fit parameters and guts of Latent Dirichlet Allocation (LDA) visit [Joe Cristian's Rpubs website](https://rpubs.com/jojoecp/643113). <br />
+
+Here are some of the specific parameters we need to consider: <br />
+1. `Theta` $\Theta$ represents topic distributions where $\Theta{m}$ is the topic distribution for document m <br />
+2. `Phi` $\Phi$ represents <br />
+3. `Beta` $\beta$ represents per topic word probabilities with lower betas indicating a smaller mixture of words per topic. <br />
+4. `k` number of topics (user specified) <br />
+5. `M` is the number of documents <br />
+6. `N` is the number of words <br />
+
+The `textmineR` package provides numerous fit measures. We will need to build a topic model from this package working from a document feature matrix. Let's try it out on the sotu_dfm we created earlier. We can use gibbs sampling or VEM variational expectation maximization. We'll use the `FindTopicsNumber` function from the `ldatuning` package to take a shot at determining the best number of topics from 10-70 in all the SOTU addresses from 1950 onward.
+
+```{r}
+result <- FindTopicsNumber(
+  sotu_dfm,
+  topics = seq(from = 10, to = 70, by = 1),
+  metrics = c("Griffiths2004", "CaoJuan2009", "Arun2010", "Deveaud2014"),
+  method = "Gibbs",
+  control = list(seed = 77),
+  mc.cores = 2L,
+  verbose = TRUE
+)
+summary(result)
+FindTopicsNumber_plot(result)
+```
+
+
+
+Code from [Kasper Welbers](https://github.com/ccs-amsterdam/r-course-material/blob/master/tutorials/r_text_lda.md)
