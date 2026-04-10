@@ -60,10 +60,19 @@ library(SemanticDistance)
 3) Monologues (continuous sequential text where order is maintained) <br>
 3) Dialogues (conversation transcripts where a speaker is marked) <br>
 
+```{r}
+shawnVector <- data.frame(words = c("koala", "panda", "fox", "anteater", "hyrax", "beaver",
+                 "aubergine", "cabbage", "potato", "pomegranate", "banana", "squash",
+                 "pizza", "fries", "salad", "dog"))
+
+
+```
+
+
 ## Clean monologue
 ```{r}
-Monologue_Cleaned <- clean_monologue_or_list(dat=Monologue_Typical, wordcol='mytext', omit_stops=TRUE, lemmatize=TRUE)
-knitr::kable(head(Monologue_Cleaned, 12), format = "pipe", digits=2)
+Monologue_Cleaned <- clean_monologue_or_list(dat=shawnVector, wordcol='words', omit_stops=TRUE, lemmatize=TRUE)
+knitr::kable(head(Monologue_Cleaned, 16), format = "pipe", digits=2)
 ```
 
 ## Clean dialogue
@@ -83,7 +92,10 @@ knitr::kable(head(Dialogue_Cleaned, 12), format = "pipe", digits=2)
 Pairs of words arrayed in columns
 
 ```{r}
-WordPairs_Clean <- clean_paired_cols(dat=Word_Pairs, wordcol1='word1', wordcol2='word2', lemmatize=TRUE)
+
+shawnPairs <- data.frame(word1 = c("oatmeal", "pancake", "waffle", "bear"),
+                         word2 = c("panda", "fox", "beaver", "koala"))
+WordPairs_Clean <- clean_paired_cols(dat=shawnPairs, wordcol1='word1', wordcol2='word2', lemmatize=TRUE)
 knitr::kable(head(WordPairs_Clean, 6), format = "simple", digits=2) 
 ```
 
@@ -123,8 +135,8 @@ if you want to plot continuous distance, you will need to 'fill in' or impute mi
 Arguments to clean_monologue_or_list
 - datinput formatted dataframe. <br> -dist_typequoted argument distance option, default is "embedding", alt isSD15`.
 ```{r}
-MyCleanList <- clean_monologue_or_list(dat=Unordered_List, wordcol='mytext')
-mydendro <- wordlist_to_network(MyCleanList, output='dendrogram', dist_type='embedding')
+MyCleanList <- clean_monologue_or_list(dat=shawnVector, wordcol='words')
+mydendro <- wordlist_to_network(MyCleanList, output='network', dist_type='embedding')
 ```
 
 ### igraph network
@@ -135,9 +147,26 @@ mynetwork <- wordlist_to_network(MyCleanList, output='network', dist_type='embed
 ```
 
 
+Create a new data frame
+Sample 500,000 random word pairs
+Histograms for both distributions
+Density plots on top of each other
+Compute correlation between SD15 and GLoVe embeddings
 
 ```{r}
-shawnVector <- c("koala", "panda", "fox", "anteater", "hyrax", "beaver",
-                 "aubergine", "cabbage", "potato", "lettuce", "banana", "squash")
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+
+word_pop <- lookup_Jul25$word
+word_sample <- data.frame(word1 = sample(x = word_pop, size = 500000, replace = TRUE),
+                          word2 = sample(x = word_pop, size = 500000, replace = TRUE))
+
+WordPairs_Clean <- clean_paired_cols(dat=word_sample, wordcol1='word1', wordcol2='word2', lemmatize=TRUE)
+knitr::kable(head(WordPairs_Clean, 6), format = "simple", digits=2) 
+
+Columns_Dists <- dist_paired_cols(WordPairs_Clean) #only argument is dataframe
+knitr::kable(head(Columns_Dists, 6), format = "pipe", digits = 2)
+
 ```
+
+
 

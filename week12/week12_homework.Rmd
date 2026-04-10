@@ -1,0 +1,145 @@
+---
+title: "Week 12 Homework"
+author: "Shawn Wang"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 1
+    css: "../stylesTemplates/sw_1_professional.css"
+knit: (function(inputFile, encoding) {
+    rmarkdown::render(inputFile, encoding = encoding, output_dir = "../docs")
+  })
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", 
+           "RCurl", "psych", "knitr", 
+           "RColorBrewer", 'dplyr', "tidytext",
+           "tm", "stringi", "textstem", "psych", "ggdist", 
+           "viridis", "zoo", "Hmisc", "reshape", "plotly", "ggResidpanel",
+           install=T)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "psych", "knitr", "RColorBrewer", 'dplyr', 'gutenbergr', 'janeaustenr', 'quanteda', 'readtext', install=T)
+library(SemanticDistance)
+
+
+library("quanteda.textplots")
+library(quanteda.textstats)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 12) %>%
+   row_spec(0, color = "white", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "500px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+
+#load in database from online
+load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+```
+
+
+
+# Sample 500,000 random word pairs
+
+
+```{r}
+word_pop <- lookup_Jul25$word
+word_sample <- data.frame(word1 = sample(x = word_pop, size = 500000, replace = TRUE),
+                          word2 = sample(x = word_pop, size = 500000, replace = TRUE))
+```
+
+
+<br>
+
+# Clean word pairs
+
+```{r}
+WordPairs_Clean <- clean_paired_cols(dat=word_sample, wordcol1='word1', wordcol2='word2', lemmatize=TRUE)
+knitr::kable(head(WordPairs_Clean, 6), format = "simple", digits=2) 
+```
+
+<br>
+
+# Calculate semantic distance between all pairs
+
+```{r}
+
+begin <- Sys.time()
+Columns_Dists <- dist_paired_cols(WordPairs_Clean) #only argument is dataframe
+knitr::kable(head(Columns_Dists, 6), format = "pipe", digits = 2)
+
+end <- Sys.time()
+
+comp_time <- as.numeric(difftime(time2 = begin, time1 = end, units = "mins"))
+#print(paste0("by the way, this computation took ", round(comp_time, 2), " minutes"))
+```
+
+By the way, this computation took `r round(comp_time, 3)` minutes.
+
+
+<br>
+
+# Histograms for both distributions
+
+```{r}
+Columns_Dists %>%
+  ggplot(mapping = aes(x = CosDist_GLO)) +
+  geom_histogram()
+
+
+Columns_Dists %>%
+  ggplot(mapping = aes(x = CosDist_SD15)) +
+  geom_histogram()
+```
+
+
+I'm noticing something interesting in that the GLoVe embeddings are much more clustered together and have lower variance than the experiential SD15 embeddings. 
+
+
+<br>
+
+# Density plots on top of each other
+
+```{r}
+dists_long <- Columns_Dists %>%
+  pivot_longer(cols = CosDist_GLO:CosDist_SD15,
+               names_to = "dist_type",
+               values_to = "dist")
+
+
+dists_long %>%
+  ggplot(mapping = aes(x = dist, fill = dist_type)) +
+  geom_density(alpha = 1/3)
+```
+
+I'm getting similar results here, where the GLoVe embeddings are clearly much less spread apart than the experiential embeddings. My best guess as to why this is is that the greater variance in the SD15 embeddings come from the nature of user ratings. I imagine people are going to be more varied on how they feel that certain words are rated and thus there will be less agreement on those ratings. Similarly, experiences vary a lot across different people. We also see that there seem to be just fewer words that have experiential ratings vs GLoVe ratings to begin with, which highlights a limitation of having human raters. If we are just looking at empirically defined embeddings with hundreds of hyperparameters as is the case with the GLoVe embeddings that are trained off of corpora with no human intervention then it makes sense that there is less variance as language tends to cluster certain words around each other in similar contexts. 
+
+
+<br>
+
+
+# Compute correlation between SD15 and GLoVe embeddings
+
+```{r}
+dist_cor <- cor(x = Columns_Dists$CosDist_SD15, y = Columns_Dists$CosDist_GLO, use = "complete.obs")
+dist_cor
+```
+
+The correlation between GLoVe and SD15 is very low at r = `r round(dist_cor, 2)`. I think given the previous charts showing the discrepancies between distributions of embedding values it makes sense that they would not track. To me this suggests that humans' use of language in terms of numeric frequency and pattern is very disconnected from our subjective experience of those words and how we perceive them to be related to each other. On another note, this could be reflective of how many more words are being captured by GLoVe (GLoVe n = `r sum(!is.na(Columns_Dists$CosDist_GLO))` vs SD15 n = `r sum(!is.na(Columns_Dists$CosDist_SD15))`) as it does not require human oversight to calculate the values and thus might produce a tighter distribution. 
