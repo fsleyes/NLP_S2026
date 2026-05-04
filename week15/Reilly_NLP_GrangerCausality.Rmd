@@ -1,0 +1,112 @@
+---
+title: "Granger Causality: NLP & Biosignals Demo"
+author: "Jamie Reilly, Ph.D."
+date: "`r format(Sys.Date(), '%B %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 1
+    code_folding: show
+    css: "https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/jr_20.css?raw=true"
+---
+
+
+```{r setup, include=F}
+knitr::opts_chunk$set(fig.width=8, fig.height=5, fig.align = 'left', fig.path='Figs/', cache.path='Cache/', eval=T, echo=T, tidy=TRUE,  cache=F, message=F, warning=F, stringsAsFactors=F, yaml.eval.expr = TRUE)  
+
+library(xfun)
+pkg_attach("tidyverse", "here", "kableExtra", "RCurl", "ggdist", "wesanderson", "psych", "stargazer", "knitr", "RColorBrewer", 'broom', 'purrr', 'dplyr', 'stats', 'lmtest', 'zoo', install=T)
+
+jamie.theme <- theme_bw() + theme(axis.line = element_line(colour = "black"), panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.border = element_blank(), panel.background = element_blank(), legend.title= element_blank())  #custom theme ggplot2
+
+
+print.me <- function(x, ...) {
+if (nrow(x) > 200){
+   len <- 200 
+    } else {
+       len <- (nrow(x))
+}
+   x[1:len,] %>%
+   kbl(digits=2, align= 'l', booktabs=T) %>%
+   kable_styling(fixed_thead = T) %>%
+   kable_paper("striped", full_width = T, html_font = "Helvetica", font_size = 11) %>%
+   row_spec(0, color = "yellow", background = "#5b705f", font_size = 12) %>%
+   scroll_box(width = "700px", height = "300px") %>%
+   asis_output()
+}
+
+registerS3method("knit_print", "data.frame", print.me)
+```
+
+# Simulate Time Series 1: How Scary?
+Let's say we have some fluctuating 'scariness' time series that represents how frightening a horror movie is every second. This is let's say 80 observations sampled from a random normal distribution (mean=5, sd=2)
+```{r}
+set.seed(123)
+TS_HowScary <- rnorm(80, 15, 3)
+head(TS_HowScary)
+```
+
+# Simulate Time Series 2: Heart Rate 
+Now let's Lag the 'scariness' time series by some fixed interval (3 units). We will call this the 'Heart Rate' time series. In this simulation.  Heart Rate is a perfect lagged function of Scariness.  You know that any peak in 'scariness' will evoke the same peak in 'heart rate' three units later becuase that's how we modeled the data. When you lag a TS, you will create missing values for the first N of the lag function. You need to extrapolate to fill in values so that both time series are of equal length
+```{r}
+#creates a lagged version of teh first time series (shifted by 3 turns)
+TS_HeartRate <- lag(TS_HowScary, 3)
+head(TS_HeartRate)
+
+#count missing obsercations
+#sum(is.na(TS_HeartRate))
+
+#rule=2 allows for extarpolation across leading or trailing missing observations
+TS_HeartRate<- zoo::na.approx(TS_HeartRate, rule = 2)
+
+#count missing obsercations
+#sum(is.na(TS_HeartRate))
+```
+
+# Convert to time series
+Plot them. In this case, HR is a perfect lagged function of Scariness level with the first three observations imputed/extrapolated.
+```{r}
+TS_HowScary <- as.ts(TS_HowScary)
+TS_HeartRate <- as.ts(TS_HeartRate)
+
+#plot the first TS then add the second using lines
+plot(TS_HowScary, col="gray", ylim=c(0,30))
+lines(TS_HeartRate, col = "darkred", lty = 2, lwd = 2)
+```
+
+# Granger Casuality
+The syntax of the Granger test is `lmtest::grangertest(X,Y, order=1)` where X is the first time series and y is the second time series. Order is the number of lags from the first time series to test at, Default is lag=1. <br>
+
+## Does Heart Rate Granger Cause Scariness?
+oes Heart rate cause scariness? Most certainly not! So the test of heart rate grannger causing scariness should be ns. Let's run it and find out.
+```{r}
+library(lmtest)
+#Does the scary time series 'granger cause' the HR time series?, Order is number of lags
+res1 <- lmtest::grangertest(TS_HeartRate, TS_HowScary, order=3)
+print(res1)
+```
+
+# Does Scariness Granger Cause Heart Rate Acceleration?
+In this case, we know that it should because we simulated the data so that HR is a perfect lagged function of Scariness
+```{r}
+res2 <- lmtest::grangertest(TS_HowScary, TS_HeartRate, order=3)
+print(res2)
+```
+
+Voila! There you have it... Scariness Granger Causes HR in this simulated example at p<.00000000000001
+
+# EXERCISES IN CLASS
+# Does word frequency granger cause word length in a language sample?
+
+
+
+
+
+# Does valence granger cause emo_anger?
+
+
+
+
+
+

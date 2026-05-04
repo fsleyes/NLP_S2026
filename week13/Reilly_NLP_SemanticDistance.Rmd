@@ -172,6 +172,3 @@ knitr::kable(head(Columns_Dists, 6), format = "pipe", digits = 2)
 
 
 
-
-
-

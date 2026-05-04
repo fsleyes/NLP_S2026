@@ -1,5 +1,5 @@
 ---
-title: "Semantic Distance"
+title: "Semantic Distance in Continuous Language Samples"
 author: "Jamie Reilly, Ph.D."
 date: "`r format(Sys.Date(), '%B %Y')`"
 html_document:
@@ -35,6 +35,8 @@ if (nrow(x) > 200){
 }
 
 registerS3method("knit_print", "data.frame", print.me)
+
+text <- read.csv(file = "A2053_clean.csv", header = TRUE)
 ```
 
 
@@ -60,19 +62,10 @@ library(SemanticDistance)
 3) Monologues (continuous sequential text where order is maintained) <br>
 3) Dialogues (conversation transcripts where a speaker is marked) <br>
 
-```{r}
-shawnVector <- data.frame(words = c("koala", "panda", "fox", "anteater", "hyrax", "beaver",
-                 "aubergine", "cabbage", "potato", "pomegranate", "banana", "squash",
-                 "pizza", "fries", "salad", "dog"))
-
-
-```
-
-
 ## Clean monologue
 ```{r}
-Monologue_Cleaned <- clean_monologue_or_list(dat=shawnVector, wordcol='words', omit_stops=TRUE, lemmatize=TRUE)
-knitr::kable(head(Monologue_Cleaned, 16), format = "pipe", digits=2)
+Monologue_Cleaned <- clean_monologue_or_list(dat=Monologue_Typical, wordcol='mytext', omit_stops=TRUE, lemmatize=TRUE)
+knitr::kable(head(Monologue_Cleaned, 12), format = "pipe", digits=2)
 ```
 
 ## Clean dialogue
@@ -86,17 +79,6 @@ Arguments to clean_dialogue <br>
 ```{r}
 Dialogue_Cleaned <- clean_dialogue(dat=Dialogue_Typical, wordcol="text", who_talking = "speaker", omit_stops=TRUE, lemmatize=TRUE)
 knitr::kable(head(Dialogue_Cleaned, 12), format = "pipe", digits=2)
-```
-
-## Clean word pairs
-Pairs of words arrayed in columns
-
-```{r}
-
-shawnPairs <- data.frame(word1 = c("oatmeal", "pancake", "waffle", "bear"),
-                         word2 = c("panda", "fox", "beaver", "koala"))
-WordPairs_Clean <- clean_paired_cols(dat=shawnPairs, wordcol1='word1', wordcol2='word2', lemmatize=TRUE)
-knitr::kable(head(WordPairs_Clean, 6), format = "simple", digits=2) 
 ```
 
 # Step 2: Run Distance
@@ -113,65 +95,115 @@ Anchored_Dists1 <- dist_anchor(dat=Monologue_Cleaned, anchor_size=8)
 knitr::kable(head(Anchored_Dists1, 4), format = "pipe", digits = 2)
 ```
 
-
 ## Semantic distance turn-to-turn in dialogues
-
 ```{r}
 DialogueDists <- dist_dialogue(dat=Dialogue_Cleaned, who_talking='speaker')
 knitr::kable(head(DialogueDists, 4), format = "pipe", digits = 2)
 ```
 
-## Word Pair Distances
+# Prep for Time Series Analysis
+if you want to plot continuous distance, you will need to 'fill in' or impute missing values and probably will also need to smmoth your data. Lots of ways to do this. We will use linear interpolation from the `zoo` package. Here's an example of smoothing and interpolation
 ```{r}
-Columns_Dists <- dist_paired_cols(WordPairs_Clean) #only argument is dataframe
-knitr::kable(head(Columns_Dists, 6), format = "pipe", digits = 2)
+#some noisy data (n=1000), random normal (Gaussian distributed with a mean of 20, sd=2)
+noisy_dat <- data.frame(noisy = rnorm(1000, 20, 2))
+noisy_dat <- noisy_dat %>% mutate(noisy_seq = seq_along(noisy))
+head(noisy_dat, n = 15)
+p1 <- ggplot(noisy_dat, aes(x = noisy_seq, y = noisy)) + geom_line(color = "red",
+    alpha = 0.7) + ylim(c(15, 25)) + jamie.theme
+print(p1)
+```
+
+#Simulate some missing observations (non-continuous time series)
+```{r}
+set.seed(998877)
+
+# Assuming `column_name` is the name of the column you want to modify, 100 missing observations
+noisy_missing_dat <- noisy_dat %>% mutate(noisy_missing = noisy) %>% mutate(noisy_missing = ifelse(row_number() %in% sample(n(), 100), NA, noisy_missing))
+
+# View the resulting dataframe
+str(noisy_missing_dat)
+```
+
+# Interpolate across missing observations
+This creates a continuous time series
+```{r}
+# load `zoo` package
+library(zoo)
+noisy_missing_dat$noisy_interpolated <- zoo::na.approx(noisy_missing_dat$noisy_missing, na.rm = FALSE)
+head(noisy_missing_dat, n = 20)
+```
+
+# smoothing a complete time series
+```{r}
+#smoothing using simple moving average (k=window)
+smoother_dat <- noisy_missing_dat %>% mutate(smoothdat = zoo::rollmean(noisy_interpolated, k = 10, fill = "extend"))  
+#use a moving window of 5
+head(smoother_dat, n = 60)
+p2 <- ggplot(smoother_dat, aes(x = noisy_seq, y = smoothdat)) + geom_line(color = "goldenrod2",
+    alpha = 0.7) + ylim(c(15, 25)) + jamie.theme
+print(p2)
+
+#another way using loess smoothing
+p3 <- ggplot(smoother_dat, aes(x = noisy_seq, y = smoothdat)) +
+    geom_smooth() + jamie.theme
+print(p3)
+```
+
+# Now run it with semantic distance
+Try it on your language sample (ngram=1,2,3)
+
+```{r}
+
+
+text_clean <- clean_monologue_or_list(dat = text, wordcol = "word", omit_stops = FALSE)
+dists <- dist_ngram2word(dat = text_clean, ngram = 2)
+
+
+dists %>% ggplot(mapping = aes(x = id_row_postsplit, y = CosDist_2gram_glo)) +
+  geom_smooth() +
+  theme_classic()
+
+
+
+
+  
+```
+
+```{r}
+
+
+anchor_dists <- dist_anchor(dat = text_clean, anchor_size = 8)
+anchor_dists %>% ggplot(mapping = aes(x = id_row_postsplit, y = CosDist_Anchor_GLO)) +
+  geom_smooth(se = FALSE) +
+  theme_classic()
+
 ```
 
 
-# Visualize data
-if you want to plot continuous distance, you will need to 'fill in' or impute missing values. Lots of ways to do this. We will use linear interpolation from the `zoo` package.
-
-### cluster dendrogram
-Arguments to clean_monologue_or_list
-- datinput formatted dataframe. <br> -dist_typequoted argument distance option, default is "embedding", alt isSD15`.
 ```{r}
-MyCleanList <- clean_monologue_or_list(dat=shawnVector, wordcol='words')
-mydendro <- wordlist_to_network(MyCleanList, output='network', dist_type='embedding')
-```
-
-### igraph network
-
-```{r}
-MyCleanList <- clean_monologue_or_list(dat=Unordered_List, wordcol='mytext')
-mynetwork <- wordlist_to_network(MyCleanList, output='network', dist_type='embedding')
-```
+library(zoo)
+noisy_missing_dat$noisy_interpolated <- zoo::na.approx(noisy_missing_dat$noisy_missing, na.rm = FALSE)
+head(noisy_missing_dat, n = 20)
 
 
-Create a new data frame
-Sample 500,000 random word pairs
-Histograms for both distributions
-Density plots on top of each other
-Compute correlation between SD15 and GLoVe embeddings
 
-```{r}
-load(url("https://github.com/Reilly-ConceptsCognitionLab/reillylab_publicdata/blob/main/lookup_Jul25.rda?raw=true"))
+dists$interp_dists <- zoo::na.approx(dists$CosDist_2gram_glo, na.rm = FALSE)
 
-word_pop <- lookup_Jul25$word
-word_sample <- data.frame(word1 = sample(x = word_pop, size = 500000, replace = TRUE),
-                          word2 = sample(x = word_pop, size = 500000, replace = TRUE))
+smoother_dists <- dists %>%
+  mutate(smoothdat = rollmean(CosDist_2gram_glo, k = 4, fill = "extend"))
+smoother_dists %>%
+  ggplot(mapping = aes(x = id_row_postsplit, y = smoothdat)) +
+  geom_line()
 
-WordPairs_Clean <- clean_paired_cols(dat=word_sample, wordcol1='word1', wordcol2='word2', lemmatize=TRUE)
-knitr::kable(head(WordPairs_Clean, 6), format = "simple", digits=2) 
 
-Columns_Dists <- dist_paired_cols(WordPairs_Clean) #only argument is dataframe
-knitr::kable(head(Columns_Dists, 6), format = "pipe", digits = 2)
+smoother_dists %>%
+  ggplot(mapping = aes(x = id_row_postsplit, y = smoothdat)) +
+  geom_smooth()
+
+
+
+
 
 ```
-
-
-
-
-
-
 
 
